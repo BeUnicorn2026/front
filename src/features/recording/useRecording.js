@@ -207,6 +207,10 @@ export function useRecording() {
       setStatus(event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨");
       return;
     }
+    if (event.type === "preparing") {
+      setStatus(event.message || "화자 인식 모델 준비 중");
+      return;
+    }
     if (event.type === "finalized") {
       finalizationRef.current?.();
       return;
@@ -243,7 +247,12 @@ export function useRecording() {
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     let ready = false;
-    const timeout = window.setTimeout(() => reject(new Error("실시간 서버 연결 시간이 초과되었습니다.")), 12_000);
+    const maximumWait = modeRef.current === "speaker" ? 120_000 : 15_000;
+    const timeout = window.setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "connection timeout");
+      if (socketRef.current === socket) socketRef.current = null;
+      reject(new Error(modeRef.current === "speaker" ? "화자 인식 모델 준비 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." : "실시간 STT 연결 시간이 초과되었습니다."));
+    }, maximumWait);
     socket.addEventListener("message", ({ data }) => {
       const event = JSON.parse(data);
       handleSocketEvent(event);

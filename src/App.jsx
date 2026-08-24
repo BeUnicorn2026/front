@@ -1211,7 +1211,14 @@ function SettingsPage({ context, recording }) {
                 <Stack gap={1}>
                   <Stack direction="horizontal" justify="between" align="center" gap={2}>
                     <Heading level={2}>등록 화자</Heading>
-                    <Token label={recording.services.biometricEncryption ? "암호화 저장" : "개발용 평문 저장"} color={recording.services.biometricEncryption ? "green" : "yellow"} size="sm" />
+                    <Stack direction="horizontal" gap={2} align="center">
+                      <Token
+                        label={recording.services.speakerModelState === "ready" ? "화자 모델 준비됨" : recording.services.speakerModelState === "failed" ? "화자 모델 오류" : "화자 모델 준비 중"}
+                        color={recording.services.speakerModelState === "ready" ? "green" : recording.services.speakerModelState === "failed" ? "red" : "yellow"}
+                        size="sm"
+                      />
+                      <Token label={recording.services.biometricEncryption ? "암호화 저장" : "개발용 평문 저장"} color={recording.services.biometricEncryption ? "green" : "yellow"} size="sm" />
+                    </Stack>
                   </Stack>
                   <Text color="secondary">한 사람만 말하는 잡음 없는 15~30초 MP3/WAV를 권장합니다. 여러 음성 구간의 일관성을 검증해 조직 전용 프로필로 저장합니다.</Text>
                 </Stack>
