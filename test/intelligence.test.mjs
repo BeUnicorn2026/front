@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -66,4 +66,10 @@ test("preserves server knowledge state while matching live transcript terms", ()
   assert.equal(terms[0].isKnown, false);
   assert.equal(terms[0].knowledge.pKnown, 0.08);
   assert.equal(terms[0].shouldExplain, true);
+});
+
+test("distinguishes safely preserved interruptions from active recordings", () => {
+  assert.deepEqual(meetingStatusPresentation("completed"), { label: "완료", color: "green" });
+  assert.equal(meetingStatusPresentation("interrupted").label, "중단 · 기록 보존");
+  assert.equal(meetingStatusPresentation("recording").label, "기록 중");
 });

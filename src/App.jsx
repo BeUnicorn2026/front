@@ -29,7 +29,7 @@ import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiRequest, postJson, putJson } from "./api";
 import {
   ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks,
-  deriveActions, deriveTerms, formatTime, matchingTerms
+  deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { useRecording } from "./features/recording/useRecording";
 
@@ -921,7 +921,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
     const meeting = recording.activeMeeting;
     let cancelled = false;
     setIntelligenceNotice("");
-    if (!meeting?.id || meeting.status !== "completed" || !displayedSegments.length) {
+    if (!meeting?.id || meeting.status === "recording" || !displayedSegments.length) {
       setIntelligence(null);
       return () => { cancelled = true; };
     }
@@ -1107,7 +1107,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
             )}
             <Feedback key={recording.mode} message={visibleNotice} status="warning" onDismiss={() => recording.setNotice("")} />
             <Feedback message={intelligenceNotice} status={intelligence ? "success" : "warning"} onDismiss={() => setIntelligenceNotice("")} />
-            {recording.activeMeeting?.status === "completed" && displayedSegments.length > 0 && !intelligence && (
+            {recording.activeMeeting?.status !== "recording" && displayedSegments.length > 0 && !intelligence && (
               <Banner
                 status="info"
                 title={recording.services.meetingIntelligence === "openai" ? "AI 정리는 선택 사항입니다." : "현재는 로컬 구조 분석을 사용합니다."}
@@ -1207,9 +1207,10 @@ function DashboardPage({ context, onStart, onOpen, recording, vocabularyTerms })
             </Stack>
             <Section dividers={["top"]} paddingInline={0}>
               <List hasDividers header={<Heading level={2}>최근 회의 문서</Heading>}>
-                {recentMeetings.length ? recentMeetings.map((meeting) => (
-                  <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Stack direction="horizontal" gap={1}><Token label={meeting.mode === "stt" ? "STT" : `${meeting.speakerCount}명`} color={meeting.mode === "stt" ? "teal" : "default"} size="sm" /><Token label={meeting.status === "completed" ? "완료" : "기록 중"} color={meeting.status === "completed" ? "green" : "yellow"} size="sm" /></Stack>} onClick={() => onOpen(meeting)} />
-                )) : <ListItem label="아직 저장된 회의가 없습니다" description="새 회의를 시작하면 실제 전사 문서가 여기에 저장됩니다." startContent={<Icon icon="microphone" color="secondary" />} />}
+                {recentMeetings.length ? recentMeetings.map((meeting) => {
+                  const status = meetingStatusPresentation(meeting.status);
+                  return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Stack direction="horizontal" gap={1}><Token label={meeting.mode === "stt" ? "STT" : `${meeting.speakerCount}명`} color={meeting.mode === "stt" ? "teal" : "default"} size="sm" /><Token label={status.label} color={status.color} size="sm" /></Stack>} onClick={() => onOpen(meeting)} />;
+                }) : <ListItem label="아직 저장된 회의가 없습니다" description="새 회의를 시작하면 실제 전사 문서가 여기에 저장됩니다." startContent={<Icon icon="microphone" color="secondary" />} />}
               </List>
             </Section>
           </Stack>
@@ -1226,9 +1227,10 @@ function DocumentsPage({ meetings, onOpen }) {
       content={(
         <LayoutContent padding={4}>
           <List hasDividers density="spacious" header={<Heading level={2}>최근 문서</Heading>}>
-            {meetings.length ? meetings.map((meeting) => (
-              <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.mode === "stt" ? "STT 테스트" : `${meeting.speakerCount}명`} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Token label={meeting.status === "completed" ? "완료" : "미완료"} color={meeting.status === "completed" ? "green" : "yellow"} size="sm" />} onClick={() => onOpen(meeting)} />
-            )) : <ListItem label="저장된 회의 문서가 없습니다" description="실시간 기록 또는 파일 전사를 완료하면 자동으로 생성됩니다." startContent={<Icon icon="search" color="secondary" />} />}
+            {meetings.length ? meetings.map((meeting) => {
+              const status = meetingStatusPresentation(meeting.status);
+              return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.mode === "stt" ? "STT 테스트" : `${meeting.speakerCount}명`} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Token label={status.label} color={status.color} size="sm" />} onClick={() => onOpen(meeting)} />;
+            }) : <ListItem label="저장된 회의 문서가 없습니다" description="실시간 기록 또는 파일 전사를 완료하면 자동으로 생성됩니다." startContent={<Icon icon="search" color="secondary" />} />}
           </List>
         </LayoutContent>
       )}

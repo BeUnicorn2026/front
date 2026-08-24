@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, correctSpeakerCluster, mergeSegments, servicesAfterLiveEvent
+  applyManualSpeakerCorrections, autosaveRetryDelay, correctSpeakerCluster, mergeSegments,
+  recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
 test("retroactively corrects earlier unknown segments from the same diarization cluster", () => {
@@ -54,4 +55,15 @@ test("tracks speaker model preparation and readiness from live events", () => {
   const ready = servicesAfterLiveEvent(loading, { type: "ready", mode: "speaker" });
   assert.equal(ready.speakerModelState, "ready");
   assert.strictEqual(servicesAfterLiveEvent(ready, { type: "transcript" }), ready);
+});
+
+test("bounds autosave retries and preserves interrupted completion state", () => {
+  assert.equal(autosaveRetryDelay(1), 1_000);
+  assert.equal(autosaveRetryDelay(3), 4_000);
+  assert.equal(autosaveRetryDelay(99), 8_000);
+  assert.equal(recordingCompletionStatus(false), "completed");
+  assert.equal(recordingCompletionStatus(true), "interrupted");
+  assert.match(recordingStartErrorMessage({ name: "NotAllowedError" }), /마이크 권한/);
+  assert.match(recordingStartErrorMessage({ name: "NotFoundError" }), /마이크/);
+  assert.equal(recordingStartErrorMessage(new Error("서버 연결 실패")), "서버 연결 실패");
 });

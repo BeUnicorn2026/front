@@ -171,3 +171,9 @@ export function formatTime(seconds) {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
   return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
 }
+
+export function meetingStatusPresentation(status) {
+  if (status === "completed") return { label: "완료", color: "green" };
+  if (status === "interrupted") return { label: "중단 · 기록 보존", color: "yellow" };
+  return { label: "기록 중", color: "yellow" };
+}
