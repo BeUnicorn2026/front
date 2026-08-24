@@ -1,0 +1,530 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiRequest, patchJson, postJson } from "../../api.js";
+
+export function mergeSegments(committed, incoming) {
+  const next = committed.map((segment) => ({ ...segment }));
+  for (const segment of incoming) {
+    if (segment.known && segment.sourceSpeaker != null) {
+      for (const previousSegment of next) {
+        if (previousSegment.sourceSpeaker === segment.sourceSpeaker && !previousSegment.known) {
+          previousSegment.speaker = segment.speaker;
+          previousSegment.known = true;
+          previousSegment.confidence = segment.confidence;
+          previousSegment.corrected = Boolean(segment.corrected);
+        }
+      }
+    }
+    const previous = next.at(-1);
+    const sameCluster = previous?.sourceSpeaker == null || segment.sourceSpeaker == null
+      || previous.sourceSpeaker === segment.sourceSpeaker;
+    if (previous && previous.speaker === segment.speaker && sameCluster && Number(segment.start) - Number(previous.end) < 1.25) {
+      previous.text = `${previous.text} ${segment.text}`;
+      previous.end = segment.end;
+      if (segment.corrected) {
+        previous.corrected = true;
+        previous.confidence = null;
+      } else if (!previous.corrected) {
+        previous.confidence = Math.max(previous.confidence ?? 0, segment.confidence ?? 0) || null;
+      }
+    } else {
+      next.push({ ...segment });
+    }
+  }
+  return next;
+}
+
+export function correctSpeakerCluster(segments, target, speakerName, registered = true) {
+  const sourceSpeaker = target?.sourceSpeaker == null ? null : String(target.sourceSpeaker);
+  return segments.map((segment) => {
+    const matches = sourceSpeaker != null
+      ? String(segment.sourceSpeaker) === sourceSpeaker
+      : target?.id ? segment.id === target.id : segment.start === target?.start && segment.speaker === target?.speaker;
+    if (!matches) return segment;
+    return {
+      ...segment,
+      speaker: speakerName,
+      known: registered,
+      confidence: null,
+      corrected: registered
+    };
+  });
+}
+
+export function applyManualSpeakerCorrections(finalSegments, liveSegments, corrections) {
+  const correctionMap = corrections instanceof Map ? corrections : new Map(Object.entries(corrections || {}));
+  if (!correctionMap.size) return finalSegments;
+  return finalSegments.map((segment) => {
+    const start = Number(segment.start) || 0;
+    const end = Math.max(start, Number(segment.end) || start);
+    const duration = Math.max(0.1, end - start);
+    const overlaps = new Map();
+    for (const live of liveSegments) {
+      const name = correctionMap.get(String(live.sourceSpeaker));
+      if (!name) continue;
+      const overlap = Math.max(0, Math.min(end, Number(live.end) || 0) - Math.max(start, Number(live.start) || 0));
+      if (overlap) overlaps.set(name, (overlaps.get(name) || 0) + overlap);
+    }
+    const [bestName, bestOverlap = 0] = [...overlaps.entries()].sort((left, right) => right[1] - left[1])[0] || [];
+    return bestName && bestOverlap / duration >= 0.45
+      ? { ...segment, speaker: bestName, known: true, confidence: null, corrected: true }
+      : segment;
+  });
+}
+
+export function useRecording() {
+  const [language, setLanguage] = useState("ko");
+  const [mode, setMode] = useState("stt");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [status, setStatus] = useState("녹음 준비");
+  const [notice, setNoticeState] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [segments, setSegments] = useState([]);
+  const [hasResult, setHasResult] = useState(false);
+  const [speakers, setSpeakers] = useState([]);
+  const [services, setServices] = useState({});
+  const [meetings, setMeetings] = useState([]);
+  const [activeMeeting, setActiveMeeting] = useState(null);
+
+  const mediaStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const pcmContextRef = useRef(null);
+  const pcmNodeRef = useRef(null);
+  const monitorContextRef = useRef(null);
+  const socketRef = useRef(null);
+  const timerRef = useRef(null);
+  const animationRef = useRef(null);
+  const chunksRef = useRef([]);
+  const committedRef = useRef([]);
+  const recordingRef = useRef(false);
+  const languageRef = useRef(language);
+  const modeRef = useRef(mode);
+  const noticeModeRef = useRef(mode);
+  const activeMeetingRef = useRef(null);
+  const elapsedRef = useRef(0);
+  const saveTimerRef = useRef(null);
+  const finalizationRef = useRef(null);
+  const speakerCorrectionsRef = useRef(new Map());
+
+  const setNotice = useCallback((message) => {
+    noticeModeRef.current = modeRef.current;
+    setNoticeState(message);
+  }, []);
+
+  useEffect(() => { languageRef.current = language; }, [language]);
+  useEffect(() => {
+    modeRef.current = mode;
+    setNotice("");
+    if (!recordingRef.current) setStatus("녹음 준비");
+  }, [mode]);
+
+  const changeMode = useCallback((nextMode) => {
+    if (recordingRef.current) return;
+    const normalized = nextMode === "speaker" ? "speaker" : "stt";
+    modeRef.current = normalized;
+    setMode(normalized);
+    setNotice("");
+    setStatus("녹음 준비");
+    window.setTimeout(() => setNotice(""), 0);
+  }, []);
+
+  const loadConfiguration = useCallback(async () => {
+    const [health, roster, meetingResult] = await Promise.all([
+      apiRequest("/api/health"),
+      apiRequest("/api/speakers"),
+      apiRequest("/api/meetings")
+    ]);
+    setServices(health.services || {});
+    setSpeakers(roster.speakers || []);
+    setMeetings(meetingResult.meetings || []);
+  }, []);
+
+  useEffect(() => {
+    loadConfiguration().catch((error) => setNotice(error.message));
+  }, [loadConfiguration]);
+
+  const cleanupCapture = useCallback(({ keepSocket = false } = {}) => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    pcmNodeRef.current?.disconnect();
+    pcmNodeRef.current = null;
+    pcmContextRef.current?.close().catch(() => undefined);
+    pcmContextRef.current = null;
+    monitorContextRef.current?.close().catch(() => undefined);
+    monitorContextRef.current = null;
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    if (!keepSocket) {
+      if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.close(1000, "recording stopped");
+      socketRef.current = null;
+    }
+    setAudioLevel(0);
+  }, []);
+
+  useEffect(() => () => cleanupCapture(), [cleanupCapture]);
+
+  const upsertMeeting = useCallback((meeting) => {
+    if (!meeting) return;
+    setMeetings((current) => [meeting, ...current.filter(({ id }) => id !== meeting.id)]
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt)));
+    if (activeMeetingRef.current?.id === meeting.id) {
+      activeMeetingRef.current = meeting;
+      setActiveMeeting(meeting);
+    }
+  }, []);
+
+  const saveActiveMeeting = useCallback(async (changes) => {
+    const meeting = activeMeetingRef.current;
+    if (!meeting) return null;
+    const result = await patchJson(`/api/meetings/${meeting.id}`, changes);
+    upsertMeeting(result.meeting);
+    return result.meeting;
+  }, [upsertMeeting]);
+
+  const scheduleAutosave = useCallback((nextSegments) => {
+    if (!activeMeetingRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveActiveMeeting({
+        status: "recording",
+        segments: nextSegments,
+        duration: elapsedRef.current
+      }).catch((error) => setNotice(`자동 저장을 다시 시도합니다. ${error.message}`));
+    }, 900);
+  }, [saveActiveMeeting]);
+
+  const handleSocketEvent = useCallback((event) => {
+    if (event.type === "error") {
+      setNotice(event.message);
+      return;
+    }
+    if (event.type === "ready") {
+      setStatus(event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨");
+      return;
+    }
+    if (event.type === "finalized") {
+      finalizationRef.current?.();
+      return;
+    }
+    if (event.type !== "transcript") return;
+    if (event.isFinal) {
+      committedRef.current = mergeSegments(committedRef.current, event.segments || []);
+      scheduleAutosave(committedRef.current);
+    }
+    const pending = event.isFinal ? [] : (event.segments || []).map((segment) => ({ ...segment, pending: true }));
+    setSegments([...committedRef.current, ...pending]);
+    setHasResult(true);
+  }, [scheduleAutosave]);
+
+  const finalizeLiveSocket = useCallback(() => new Promise((resolve) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return resolve();
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      window.clearTimeout(timeout);
+      finalizationRef.current = null;
+      resolve();
+    };
+    const timeout = window.setTimeout(finish, 5_000);
+    finalizationRef.current = finish;
+    socket.send(JSON.stringify({ type: "finalize" }));
+  }), []);
+
+  const openLiveSocket = useCallback(() => new Promise((resolve, reject) => {
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const parameters = new URLSearchParams({ language: languageRef.current, mode: modeRef.current });
+    const socket = new WebSocket(`${scheme}//${location.host}/api/live?${parameters}`);
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    let ready = false;
+    const timeout = window.setTimeout(() => reject(new Error("실시간 서버 연결 시간이 초과되었습니다.")), 12_000);
+    socket.addEventListener("message", ({ data }) => {
+      const event = JSON.parse(data);
+      handleSocketEvent(event);
+      if (event.type === "ready" && !ready) {
+        ready = true;
+        window.clearTimeout(timeout);
+        resolve(socket);
+      } else if (event.type === "error" && !ready) {
+        window.clearTimeout(timeout);
+        reject(new Error(event.message));
+      }
+    });
+    socket.addEventListener("error", () => {
+      window.clearTimeout(timeout);
+      reject(new Error("실시간 서버에 연결하지 못했습니다."));
+    }, { once: true });
+    socket.addEventListener("close", () => {
+      finalizationRef.current?.();
+      if (recordingRef.current) setNotice("실시간 연결이 종료되었습니다. 녹음을 다시 시작해 주세요.");
+    });
+  }), [handleSocketEvent]);
+
+  const startPcmStream = useCallback(async (stream) => {
+    const context = new AudioContext({ sampleRate: 16_000 });
+    pcmContextRef.current = context;
+    await context.audioWorklet.addModule("/pcm-processor.js");
+    const source = context.createMediaStreamSource(stream);
+    const processor = new AudioWorkletNode(context, "pcm16-processor");
+    pcmNodeRef.current = processor;
+    const muted = context.createGain();
+    muted.gain.value = 0;
+    processor.port.onmessage = ({ data }) => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(data);
+    };
+    source.connect(processor).connect(muted).connect(context.destination);
+  }, []);
+
+  const startLevelMonitor = useCallback((stream) => {
+    const context = new AudioContext();
+    monitorContextRef.current = context;
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 128;
+    context.createMediaStreamSource(stream).connect(analyser);
+    const values = new Uint8Array(analyser.frequencyBinCount);
+    let previousUpdate = 0;
+    const render = (time) => {
+      analyser.getByteFrequencyData(values);
+      if (time - previousUpdate > 90) {
+        const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+        setAudioLevel(Math.min(100, Math.round(average * 1.4)));
+        previousUpdate = time;
+      }
+      animationRef.current = requestAnimationFrame(render);
+    };
+    animationRef.current = requestAnimationFrame(render);
+  }, []);
+
+  const submitAudio = useCallback(async (blob, filename) => {
+    const form = new FormData();
+    form.append("audio", blob, filename);
+    form.append("language", languageRef.current);
+    return apiRequest("/api/transcribe", { method: "POST", body: form });
+  }, []);
+
+  const finishRecording = useCallback(() => {
+    recordingRef.current = false;
+    setIsRecording(false);
+    setIsBusy(false);
+    setStatus("기록 완료");
+  }, []);
+
+  const finalizeRecording = useCallback(async () => {
+    const recorder = mediaRecorderRef.current;
+    const recording = new Blob(chunksRef.current, { type: recorder?.mimeType || "audio/webm" });
+    cleanupCapture({ keepSocket: true });
+    setStatus("마지막 발화 확정 중");
+    await finalizeLiveSocket();
+    cleanupCapture();
+    const liveSegments = committedRef.current;
+    let finalSegments = liveSegments;
+    if (recording.size && services.openai && modeRef.current === "speaker") setStatus("최종 화자 재검증 중");
+    try {
+      if (recording.size && services.openai && modeRef.current === "speaker") {
+        const result = await submitAudio(recording, `recording-${Date.now()}.webm`);
+        if (result.segments?.length) {
+          finalSegments = applyManualSpeakerCorrections(result.segments, liveSegments, speakerCorrectionsRef.current);
+          committedRef.current = finalSegments;
+          setSegments(finalSegments);
+          setHasResult(true);
+        }
+      }
+      await saveActiveMeeting({ status: "completed", segments: finalSegments, duration: elapsedRef.current });
+    } catch (error) {
+      setNotice(`실시간 기록은 유지했습니다. ${error.message}`);
+      await saveActiveMeeting({ status: "completed", segments: finalSegments, duration: elapsedRef.current }).catch(() => undefined);
+    } finally {
+      finishRecording();
+    }
+  }, [cleanupCapture, finalizeLiveSocket, finishRecording, saveActiveMeeting, services.openai, submitAudio]);
+
+  const start = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.AudioWorkletNode) {
+      setNotice("이 브라우저는 실시간 음성 처리를 지원하지 않습니다.");
+      return;
+    }
+    if (modeRef.current === "speaker" && !speakers.length) {
+      setNotice("설정에서 목소리를 한 명 이상 등록해 주세요.");
+      return;
+    }
+    if (!services.deepgram) {
+      setNotice("서버에 Deepgram API 키가 설정되어 있지 않습니다.");
+      return;
+    }
+    setNotice("");
+    setIsBusy(true);
+    setStatus("마이크와 모델 연결 중");
+    setSegments([]);
+    setHasResult(true);
+    activeMeetingRef.current = null;
+    setActiveMeeting(null);
+    committedRef.current = [];
+    speakerCorrectionsRef.current.clear();
+    chunksRef.current = [];
+    elapsedRef.current = 0;
+    let createdMeeting = null;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      mediaStreamRef.current = stream;
+      await openLiveSocket();
+      const created = await postJson("/api/meetings", { language: languageRef.current, source: "live", mode: modeRef.current });
+      createdMeeting = created.meeting;
+      activeMeetingRef.current = created.meeting;
+      setActiveMeeting(created.meeting);
+      upsertMeeting(created.meeting);
+      await startPcmStream(stream);
+      startLevelMonitor(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+      recorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunksRef.current.push(event.data); });
+      recorder.addEventListener("stop", finalizeRecording, { once: true });
+      recorder.start(1000);
+      const startedAt = Date.now();
+      setElapsed(0);
+      timerRef.current = setInterval(() => {
+        elapsedRef.current = (Date.now() - startedAt) / 1000;
+        setElapsed(elapsedRef.current);
+      }, 250);
+      recordingRef.current = true;
+      setIsRecording(true);
+      setIsBusy(false);
+      setStatus("녹음 중 · 첫 발화 대기");
+    } catch (error) {
+      cleanupCapture();
+      if (createdMeeting) {
+        await saveActiveMeeting({ status: "interrupted", segments: committedRef.current, duration: elapsedRef.current }).catch(() => undefined);
+      }
+      setIsBusy(false);
+      setStatus("연결하지 못했어요");
+      setNotice(error.message);
+    }
+  }, [cleanupCapture, finalizeRecording, openLiveSocket, saveActiveMeeting, services.deepgram, speakers.length, startLevelMonitor, startPcmStream, upsertMeeting]);
+
+  const stop = useCallback(() => {
+    if (!recordingRef.current) return;
+    recordingRef.current = false;
+    setIsRecording(false);
+    setIsBusy(true);
+    setStatus("녹음 마무리 중");
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+  }, []);
+
+  const transcribeFile = useCallback(async (file) => {
+    if (!file) return;
+    setIsBusy(true);
+    setStatus("파일의 등록 화자를 확인하는 중");
+    setNotice("");
+    try {
+      const result = await submitAudio(file, file.name);
+      if (!result.segments?.length) throw new Error("인식된 대화가 없습니다.");
+      committedRef.current = result.segments;
+      setSegments(result.segments);
+      setHasResult(true);
+      const created = await postJson("/api/meetings", { language: languageRef.current, source: "upload", title: file.name.replace(/\.[^.]+$/, "") });
+      activeMeetingRef.current = created.meeting;
+      setActiveMeeting(created.meeting);
+      await saveActiveMeeting({
+        status: "completed",
+        segments: result.segments,
+        duration: Number(result.duration) || Math.max(...result.segments.map(({ end }) => Number(end) || 0), 0)
+      });
+      elapsedRef.current = Number(result.duration) || Math.max(...result.segments.map(({ end }) => Number(end) || 0), 0);
+      setElapsed(elapsedRef.current);
+      setStatus("파일 기록 완료");
+    } catch (error) {
+      setStatus("처리하지 못했어요");
+      setNotice(error.message);
+    } finally {
+      setIsBusy(false);
+    }
+  }, [saveActiveMeeting, submitAudio]);
+
+  const openMeeting = useCallback((meeting) => {
+    if (!meeting) return;
+    activeMeetingRef.current = meeting;
+    changeMode(meeting.mode === "stt" ? "stt" : "speaker");
+    setActiveMeeting(meeting);
+    committedRef.current = meeting.segments || [];
+    speakerCorrectionsRef.current = new Map((meeting.segments || [])
+      .filter(({ corrected, sourceSpeaker }) => corrected && sourceSpeaker != null)
+      .map(({ sourceSpeaker, speaker }) => [String(sourceSpeaker), speaker]));
+    setSegments(meeting.segments || []);
+    setHasResult(true);
+    elapsedRef.current = Number(meeting.duration) || 0;
+    setElapsed(elapsedRef.current);
+    setStatus(meeting.status === "recording" ? "저장된 미완료 기록" : "저장된 회의");
+    setNotice("");
+  }, [changeMode]);
+
+  const correctSpeaker = useCallback((target, speakerName) => {
+    const registered = speakers.some(({ name }) => name === speakerName);
+    const next = correctSpeakerCluster(segments, target, speakerName, registered);
+    if (registered && target.sourceSpeaker != null) {
+      speakerCorrectionsRef.current.set(String(target.sourceSpeaker), speakerName);
+      if (recordingRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: "speakerCorrection",
+          sourceSpeaker: String(target.sourceSpeaker),
+          speakerName
+        }));
+      }
+    }
+    committedRef.current = next.filter(({ pending }) => !pending);
+    setSegments(next);
+    saveActiveMeeting({ segments: committedRef.current, duration: elapsedRef.current })
+      .catch((error) => setNotice(`화자 수정을 저장하지 못했습니다. ${error.message}`));
+  }, [saveActiveMeeting, segments, speakers]);
+
+  const resetMeeting = useCallback(() => {
+    activeMeetingRef.current = null;
+    setActiveMeeting(null);
+    committedRef.current = [];
+    speakerCorrectionsRef.current.clear();
+    setSegments([]);
+    setHasResult(false);
+    elapsedRef.current = 0;
+    setElapsed(0);
+    setStatus("녹음 준비");
+    setNotice("");
+  }, []);
+
+  const enrollSpeaker = useCallback(async (name, file) => {
+    const form = new FormData();
+    form.append("name", name);
+    form.append("voice", file, file.name);
+    const result = await apiRequest("/api/speakers", { method: "POST", body: form });
+    setSpeakers((current) => [...current, result.speaker]);
+    return result.speaker;
+  }, []);
+
+  const removeSpeaker = useCallback(async (id) => {
+    await apiRequest(`/api/speakers/${id}`, { method: "DELETE" });
+    setSpeakers((current) => current.filter((speaker) => speaker.id !== id));
+  }, []);
+
+  const addSpeakerSample = useCallback(async (id, file) => {
+    const form = new FormData();
+    form.append("voice", file, file.name);
+    const result = await apiRequest(`/api/speakers/${id}/samples`, { method: "POST", body: form });
+    setSpeakers((current) => current.map((speaker) => speaker.id === id ? result.speaker : speaker));
+    return result.speaker;
+  }, []);
+
+  return {
+    language, setLanguage, mode, setMode: changeMode, isRecording, isBusy, status,
+    notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
+    elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, openMeeting, resetMeeting, correctSpeaker,
+    reload: loadConfiguration
+  };
+}
