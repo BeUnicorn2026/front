@@ -1293,6 +1293,8 @@ function SettingsPage({ context, recording }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [sampleTarget, setSampleTarget] = useState(null);
   const [sampleFile, setSampleFile] = useState(null);
+  const [identificationFile, setIdentificationFile] = useState(null);
+  const [identification, setIdentification] = useState(null);
 
   useEffect(() => {
     apiRequest("/api/organizations/current/members").then((result) => setMembers(result.members || [])).catch((error) => setFeedback(error.message));
@@ -1350,6 +1352,24 @@ function SettingsPage({ context, recording }) {
     setFeedback("초대 코드를 복사했습니다.");
   };
 
+  const identifySpeaker = async (event) => {
+    event.preventDefault();
+    if (!identificationFile) return setFeedback("식별을 시험할 MP3 또는 WAV 파일을 선택해 주세요.");
+    setBusy(true);
+    setFeedback("");
+    setIdentification(null);
+    try {
+      const form = new FormData();
+      form.append("voice", identificationFile);
+      const result = await apiRequest("/api/speakers/identify", { method: "POST", body: form });
+      setIdentification(result);
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <Layout
@@ -1404,6 +1424,47 @@ function SettingsPage({ context, recording }) {
                     <Stack direction="horizontal" justify="end">
                       <Button type="submit" variant="primary" label="목소리 등록" isLoading={busy} />
                     </Stack>
+                  </Stack>
+                </Card>
+                <Card padding={4} variant="muted">
+                  <Stack as="form" onSubmit={identifySpeaker} gap={3}>
+                    <Stack gap={1}>
+                      <Heading level={3}>등록 목소리 식별 테스트</Heading>
+                      <Text color="secondary">프로필을 바꾸지 않고 최대 15초만 분석해 실시간 판정 기준을 미리 확인합니다.</Text>
+                    </Stack>
+                    <FormLayout direction={compact ? "vertical" : "horizontal"} defaultOptionality="required">
+                      <FileInput label="테스트 음성" value={identificationFile} onChange={(file) => { setIdentificationFile(file); setIdentification(null); }} accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" isRequired width="100%" />
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        label="누구인지 테스트"
+                        isLoading={busy && Boolean(identificationFile)}
+                        isDisabled={!recording.speakers.length || !identificationFile}
+                      />
+                    </FormLayout>
+                    {!recording.speakers.length && <Text type="supporting">테스트하려면 먼저 목소리를 한 명 이상 등록해 주세요.</Text>}
+                    {identification && (
+                      <Stack gap={3}>
+                        <Banner
+                          status={identification.identification.matched ? "success" : "warning"}
+                          title={identification.identification.matched
+                            ? `${identification.identification.speaker.name}님으로 식별했습니다.`
+                            : "이름을 확정하지 않았습니다."}
+                          description={identification.identification.message}
+                        />
+                        <ProgressBar
+                          label={`최고 음성 유사도 · 기준 ${Math.round(identification.identification.requiredThreshold * 100)}%`}
+                          value={Math.max(0, Math.min(100, Math.round(identification.identification.confidence * 100)))}
+                          hasValueLabel
+                        />
+                        {identification.identification.scoreGap != null && (
+                          <Text type="supporting">
+                            2순위와 차이 {Math.round(identification.identification.scoreGap * 100)}%p · 필요한 차이 {Math.round(identification.identification.requiredMargin * 100)}%p · 입력 품질 {identification.quality.score}점
+                          </Text>
+                        )}
+                        <Text type="supporting">판정이 불안정하면 같은 사람의 다른 날·거리·마이크 샘플을 추가한 뒤 다시 시험해 보세요.</Text>
+                      </Stack>
+                    )}
                   </Stack>
                 </Card>
                 <List hasDividers header={<Heading level={3}>식별 가능한 사람</Heading>}>
