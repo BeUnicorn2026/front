@@ -14,6 +14,7 @@ import { Layout, LayoutContent, LayoutFooter, LayoutHeader, LayoutPanel } from "
 import { Link } from "@astryxdesign/core/Link";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { Section } from "@astryxdesign/core/Section";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Selector } from "@astryxdesign/core/Selector";
@@ -552,8 +553,11 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = f
   );
 }
 
-function IntelligencePanel({ terms, actions, roles, onEvidence, busyTerm }) {
+function IntelligencePanel({
+  terms, actions, roles, onEvidence, onExplain, explanations, onAnswer, busyTerm, busyAnswer
+}) {
   const [openedTerms, setOpenedTerms] = useState(() => new Set());
+  const [selectedAnswers, setSelectedAnswers] = useState({});
   const openExplanation = (term) => {
     setOpenedTerms((current) => new Set(current).add(term.conceptId || term.term));
     onEvidence(term, "card_open");
@@ -570,13 +574,15 @@ function IntelligencePanel({ terms, actions, roles, onEvidence, busyTerm }) {
       <Stack gap={4}>
         <List hasDividers header={<Heading level={3}>개인 용어</Heading>}>
           {terms.map((term) => {
+            const termKey = term.conceptId || term.term;
             const isOpen = term.shouldExplain || openedTerms.has(term.conceptId || term.term);
+            const generated = explanations[termKey];
             const knowledge = term.knowledge;
             const percentage = Math.round((knowledge?.pKnown ?? (term.isKnown ? 1 : 0.35)) * 100);
             const statusLabel = knowledge?.status === "known" ? "이해함" : knowledge?.status === "unknown" ? "설명 필요" : "학습 중";
             const controls = isOpen ? (
               <Stack direction="horizontal" gap={1} wrap="wrap" justify="end">
-                <Button label="더 쉽게" variant="ghost" size="sm" isDisabled={busyTerm === term.term} onClick={() => onEvidence(term, "request_simpler")} />
+                <Button label={generated ? "다시 쉽게" : "더 쉽게"} variant="ghost" size="sm" isLoading={busyTerm === term.term} onClick={() => onExplain(term)} />
                 <Button
                   label={term.isKnown ? "잘 모르겠어요" : "이제 알아요"}
                   variant="secondary"
@@ -597,6 +603,49 @@ function IntelligencePanel({ terms, actions, roles, onEvidence, busyTerm }) {
                     <ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel />
                     <Text type="supporting">{knowledge?.evidenceCount ? `내 피드백 ${knowledge.evidenceCount}개 기반` : knowledge?.source === "explicit_prior" ? "온보딩에서 직접 등록한 기지식" : "아직 피드백이 없는 초기 추정"}</Text>
                     {isOpen && <Text as="p">{term.personalizedExplanation || term.definition || term.roleHints?.[roles[0]] || "이 용어에 대한 기본 설명을 준비 중입니다."}</Text>}
+                    {generated && (
+                      <Section variant="muted" padding={3}>
+                        <Stack gap={3}>
+                          <Stack gap={1}>
+                            <Text weight="semibold">나를 위한 쉬운 설명</Text>
+                            <Text as="p">{generated.explanation}</Text>
+                            {generated.analogy && <Text color="secondary">비유 · {generated.analogy}</Text>}
+                          </Stack>
+                          <RadioList
+                            label={generated.checkQuestion}
+                            description="한 번 선택하면 결과가 내 이해 상태에 반영됩니다."
+                            value={generated.answer?.choiceIndex == null
+                              ? String(selectedAnswers[generated.cacheKey] ?? "")
+                              : String(generated.answer.choiceIndex)}
+                            onChange={(value) => setSelectedAnswers((current) => ({
+                              ...current, [generated.cacheKey]: Number(value)
+                            }))}
+                            isDisabled={generated.answer?.choiceIndex != null || busyAnswer === generated.cacheKey}
+                            size="sm"
+                          >
+                            {generated.choices.map((choice, index) => (
+                              <RadioListItem key={`${generated.cacheKey}-${index}`} label={choice} value={String(index)} />
+                            ))}
+                          </RadioList>
+                          {generated.answer ? (
+                            <Banner
+                              status={generated.answer.correct ? "success" : "warning"}
+                              title={generated.answer.correct ? "정확히 이해했어요." : "한 번 더 확인해 보세요."}
+                              description={generated.answer.rationale}
+                            />
+                          ) : (
+                            <Button
+                              label="답 확인"
+                              variant="secondary"
+                              size="sm"
+                              isLoading={busyAnswer === generated.cacheKey}
+                              isDisabled={!Number.isInteger(selectedAnswers[generated.cacheKey])}
+                              onClick={() => onAnswer(generated, selectedAnswers[generated.cacheKey])}
+                            />
+                          )}
+                        </Stack>
+                      </Section>
+                    )}
                   </Stack>
                 )}
               />
@@ -810,6 +859,8 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
   const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const [intelligenceNotice, setIntelligenceNotice] = useState("");
   const [knowledgeBusyTerm, setKnowledgeBusyTerm] = useState("");
+  const [knowledgeAnswerBusy, setKnowledgeAnswerBusy] = useState("");
+  const [knowledgeExplanations, setKnowledgeExplanations] = useState({});
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const displayedSegments = recording.segments;
   const knownTerms = context.user.vocabulary?.knownTerms || [];
@@ -865,6 +916,11 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
       .catch((error) => { if (!cancelled) setIntelligenceNotice(error.message); });
     return () => { cancelled = true; };
   }, [recording.activeMeeting?.id, recording.activeMeeting?.status, recording.activeMeeting?.updatedAt]);
+
+  useEffect(() => {
+    setKnowledgeExplanations({});
+    setKnowledgeAnswerBusy("");
+  }, [recording.activeMeeting?.id]);
 
   const analyzeMeeting = async () => {
     if (!recording.activeMeeting?.id || !displayedSegments.length) return;
@@ -936,7 +992,87 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
     }
   };
 
-  const insight = <IntelligencePanel terms={terms} actions={actions} roles={context.user.vocabulary?.roles || []} onEvidence={recordKnowledgeEvidence} busyTerm={knowledgeBusyTerm} />;
+  const requestKnowledgeExplanation = async (term) => {
+    const meeting = recording.activeMeeting;
+    if (!term?.term || !meeting?.id || !intelligence || knowledgeBusyTerm) return;
+    setKnowledgeBusyTerm(term.term);
+    setIntelligenceNotice("");
+    try {
+      await postJson("/api/knowledge/evidence", {
+        term: term.term,
+        kind: "request_simpler",
+        eventId: crypto.randomUUID(),
+        meetingId: meeting.id,
+        segmentIndex: Number.isInteger(term.evidenceSegmentIndex) ? term.evidenceSegmentIndex : null
+      });
+      const result = await postJson("/api/knowledge/explanations", {
+        term: term.term,
+        meetingId: meeting.id,
+        segmentIndex: Number.isInteger(term.evidenceSegmentIndex) ? term.evidenceSegmentIndex : null,
+        level: "simple"
+      });
+      setKnowledgeExplanations((current) => ({
+        ...current,
+        [term.conceptId || term.term]: result.explanation
+      }));
+      const refreshed = await apiRequest(`/api/meetings/${meeting.id}/intelligence`);
+      setIntelligence(refreshed.intelligence);
+      await onVocabularyRefresh();
+      setIntelligenceNotice(result.cached ? "저장된 맞춤 해설을 불러왔습니다." : "내 역할과 회의 문맥에 맞춘 쉬운 설명을 만들었습니다.");
+    } catch (error) {
+      setIntelligenceNotice(error.message);
+    } finally {
+      setKnowledgeBusyTerm("");
+    }
+  };
+
+  const answerKnowledgeQuestion = async (explanation, choiceIndex) => {
+    if (!explanation?.cacheKey || !Number.isInteger(choiceIndex) || knowledgeAnswerBusy) return;
+    setKnowledgeAnswerBusy(explanation.cacheKey);
+    setIntelligenceNotice("");
+    try {
+      const result = await postJson(`/api/knowledge/explanations/${explanation.cacheKey}/answer`, { choiceIndex });
+      setKnowledgeExplanations((current) => {
+        const key = explanation.conceptId || explanation.term;
+        return {
+          ...current,
+          [key]: {
+            ...current[key],
+            answer: {
+              choiceIndex: result.choiceIndex,
+              correct: result.correct,
+              rationale: result.rationale
+            }
+          }
+        };
+      });
+      const meeting = recording.activeMeeting;
+      if (meeting?.id && intelligence) {
+        const refreshed = await apiRequest(`/api/meetings/${meeting.id}/intelligence`);
+        setIntelligence(refreshed.intelligence);
+      }
+      await onVocabularyRefresh();
+      setIntelligenceNotice(result.correct ? "확인 질문 정답을 이해 상태에 반영했습니다." : "확인 질문 결과를 반영하고 설명 필요도를 높였습니다.");
+    } catch (error) {
+      setIntelligenceNotice(error.message);
+    } finally {
+      setKnowledgeAnswerBusy("");
+    }
+  };
+
+  const insight = (
+    <IntelligencePanel
+      terms={terms}
+      actions={actions}
+      roles={context.user.vocabulary?.roles || []}
+      onEvidence={recordKnowledgeEvidence}
+      onExplain={requestKnowledgeExplanation}
+      explanations={knowledgeExplanations}
+      onAnswer={answerKnowledgeQuestion}
+      busyTerm={knowledgeBusyTerm}
+      busyAnswer={knowledgeAnswerBusy}
+    />
+  );
 
   return (
     <>
