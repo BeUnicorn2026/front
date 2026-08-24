@@ -757,7 +757,9 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
   if (!blocks.length) {
     return <Banner status="info" title="첫 발화를 기다리는 중" description="대화가 들어오면 중심 주제와 발화 구간이 연결됩니다." />;
   }
-  const visible = blocks.slice(0, 16);
+  const selectedIndex = Math.max(0, blocks.findIndex(({ id }) => id === selectedId));
+  const windowStart = Math.max(0, Math.min(selectedIndex - 7, blocks.length - 16));
+  const visible = blocks.slice(windowStart, windowStart + 16);
   const centerX = 420;
   const centerY = 310;
   const radiusX = 325;
@@ -768,8 +770,21 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
   });
   return (
     <Stack gap={4}>
+      <Stack direction={compact ? "vertical" : "horizontal"} justify="between" align={compact ? "stretch" : "center"} gap={2}>
+        <Stack gap={0.5}>
+          <Heading level={2}>회의 마인드맵</Heading>
+          <Text color="secondary">주제 {selectedIndex + 1}/{blocks.length} · 방향 버튼과 노드를 모두 사용할 수 있습니다.</Text>
+        </Stack>
+        <Stack direction="horizontal" gap={2} justify="end">
+          <Button label="이전 주제" variant="secondary" size="sm" isDisabled={selectedIndex <= 0} onClick={() => onSelect(blocks[selectedIndex - 1]?.id)} />
+          <Button label="다음 주제" variant="secondary" size="sm" isDisabled={selectedIndex >= blocks.length - 1} onClick={() => onSelect(blocks[selectedIndex + 1]?.id)} />
+        </Stack>
+      </Stack>
+      {blocks.length > visible.length && (
+        <Banner status="info" title={`전체 ${blocks.length}개 중 선택 주제 주변 ${visible.length}개를 표시합니다.`} description="이전·다음 주제로 이동하면 마인드맵 표시 범위도 함께 이동합니다. 트리 보기에서는 전체 계층을 한 번에 탐색할 수 있습니다." />
+      )}
       <Card variant="muted" padding={compact ? 1 : 3}>
-      <svg viewBox="0 0 840 620" width="100%" height={compact ? 420 : 560} role="img" aria-label={`실제 회의 발화 ${blocks.length}개 구간의 마인드맵`}>
+      <svg viewBox="0 0 840 620" width="100%" height={compact ? 420 : 560} role="img" aria-label={`전체 ${blocks.length}개 중 ${visible.length}개 주제를 표시한 실제 회의 마인드맵`}>
         <title>실제 회의 마인드맵</title>
         {nodes.map((node) => (
           <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="var(--color-border-emphasized)" strokeWidth="2" />
@@ -779,8 +794,23 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
           <text x={centerX} y="305" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">현재 회의</text>
           <text x={centerX} y="329" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-sm)">{blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 실제 발화</text>
         </g>
-        {nodes.map((node, index) => (
-          <g key={node.id} role="button" tabIndex="0" aria-label={`${node.label} 주제 열기`} onClick={() => onSelect(node.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(node.id); }} style={{ cursor: "pointer" }}>
+        {nodes.map((node) => (
+          <g
+            key={node.id}
+            role="button"
+            tabIndex={0}
+            cursor="pointer"
+            aria-label={`${node.label} 주제 열기`}
+            aria-pressed={selectedId === node.id}
+            onClick={() => onSelect(node.id)}
+            onFocus={() => onSelect(node.id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(node.id);
+              }
+            }}
+          >
             <rect x={node.x - 66} y={node.y - 30} width="132" height="60" rx="18" fill="var(--color-background-card)" stroke={selectedId === node.id ? "var(--color-accent)" : "var(--color-border)"} strokeWidth={selectedId === node.id ? "4" : "2"} />
             <text x={node.x} y={node.y - 3} textAnchor="middle" fill="var(--color-text-primary)" fontSize="var(--font-size-base)" fontWeight="var(--font-weight-semibold)">
               {node.label.length > 15 ? `${node.label.slice(0, 15)}…` : node.label}
