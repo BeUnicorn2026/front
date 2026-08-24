@@ -27,7 +27,7 @@ import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, TERM_CATALOG, buildMeetingStructure, buildStructureBlocks,
+  ROLE_OPTIONS, buildMeetingStructure, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms
 } from "./data/intelligence";
 import { useRecording } from "./features/recording/useRecording";
@@ -400,16 +400,15 @@ function OrganizationSetup({ context, onChange }) {
 function VocabularyOnboarding({ context, onChange }) {
   const { compact } = useViewport();
   const [roles, setRoles] = useState(context.user.vocabulary?.roles || []);
-  const [knownTerms, setKnownTerms] = useState(context.user.vocabulary?.knownTerms || []);
+  const [knownTermsInput, setKnownTermsInput] = useState((context.user.vocabulary?.knownTerms || []).join(", "));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const previewTerms = TERM_CATALOG.slice(0, 3);
-
-  const toggle = (value, values, setter) => setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  const toggleRole = (value) => setRoles(roles.includes(value) ? roles.filter((item) => item !== value) : [...roles, value]);
   const submit = async () => {
     setBusy(true);
     setError("");
     try {
+      const knownTerms = [...new Set(knownTermsInput.split(/[,\n]/).map((term) => term.trim()).filter(Boolean))];
       onChange(await putJson("/api/profile/vocabulary", { roles, knownTerms, onboarded: true }));
     } catch (requestError) {
       setError(requestError.message);
@@ -437,7 +436,7 @@ function VocabularyOnboarding({ context, onChange }) {
               </Stack>
               <Stack direction="horizontal" gap={2} wrap="wrap">
                 {ROLE_OPTIONS.map((role) => (
-                  <Token key={role} label={role} color={roles.includes(role) ? "green" : "default"} onClick={() => toggle(role, roles, setRoles)} />
+                  <Token key={role} label={role} color={roles.includes(role) ? "green" : "default"} onClick={() => toggleRole(role)} />
                 ))}
               </Stack>
             </Stack>
@@ -446,22 +445,21 @@ function VocabularyOnboarding({ context, onChange }) {
             <Stack gap={3}>
               <Stack gap={1}>
                 <Heading level={2}>이미 익숙한 용어</Heading>
-                <Text color="secondary">선택한 용어는 회의 중 초록색으로만 표시하고 설명은 접습니다.</Text>
+                <Text color="secondary">쉼표로 구분해 입력하세요. 실제 회의에서 다시 등장하면 설명을 접습니다.</Text>
               </Stack>
-              <Stack direction="horizontal" gap={2} wrap="wrap">
-                {TERM_CATALOG.map(({ term }) => (
-                  <Token key={term} label={term} color={knownTerms.includes(term) ? "green" : "default"} onClick={() => toggle(term, knownTerms, setKnownTerms)} />
-                ))}
-              </Stack>
+              <TextInput label="익숙한 용어" value={knownTermsInput} onChange={setKnownTermsInput} placeholder="예: 벡터 검색, 배포 파이프라인" width="100%" />
             </Stack>
           </Section>
           <Stack direction={compact ? "vertical" : "horizontal"} gap={3}>
-            {previewTerms.map((term, index) => (
-              <Card key={term.term} variant={index === 0 ? "red" : index === 1 ? "yellow" : "green"} width={compact ? "100%" : "33.333%"} padding={4}>
+            {[
+              ["낯선 용어", "실제 회의 분석에서 발견되면 내 역할에 맞춰 설명합니다."],
+              ["조직 신규", "조직 회의에서 처음 축적된 용어는 별도로 구분합니다."],
+              ["이미 아는 용어", "직접 등록했거나 알아요로 표시한 용어는 설명을 접습니다."]
+            ].map(([label, description], index) => (
+              <Card key={label} variant={index === 0 ? "red" : index === 1 ? "yellow" : "green"} width={compact ? "100%" : "33.333%"} padding={4}>
                 <Stack gap={2}>
-                  <Token label={term.term} color={index === 0 ? "red" : index === 1 ? "yellow" : "green"} size="sm" />
-                  <Text weight="semibold">{index === 0 ? "나에게 낯선 용어" : index === 1 ? "조직에 새 용어" : "이미 아는 용어"}</Text>
-                  <Text type="supporting" as="p">{index === 2 ? "설명 없이 문맥만 유지합니다." : term.roleHints[roles[0]] || term.definition}</Text>
+                  <Token label={label} color={index === 0 ? "red" : index === 1 ? "yellow" : "green"} size="sm" />
+                  <Text type="supporting" as="p">{description}</Text>
                 </Stack>
               </Card>
             ))}
@@ -494,7 +492,7 @@ function PageHeader({ title, endContent }) {
   );
 }
 
-function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = false, mode = "speaker" }) {
+function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = false, mode = "speaker", termCatalog = [] }) {
   const identifiesSpeakers = mode === "speaker";
   return (
     <List
@@ -503,12 +501,12 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = f
       header={<Heading level={2}>{identifiesSpeakers ? "화자별 실시간 기록" : "실시간 STT 결과"}</Heading>}
     >
       {segments.length ? segments.map((segment, index) => {
-        const terms = matchingTerms(segment.text);
+        const terms = matchingTerms(segment.text, termCatalog);
         const controls = (
           <Stack direction="horizontal" gap={2} align="center" wrap="wrap">
             <Text type="code" color="secondary">{formatTime(segment.start)}</Text>
             {segment.corrected && <Token label="직접 확인" color="teal" size="sm" />}
-            {segment.confidence != null && <Token label={`식별 ${Math.round(segment.confidence * 100)}%`} color={segment.confidence >= 0.78 ? "green" : "yellow"} size="sm" />}
+            {segment.confidence != null && <Token label={`음성 유사도 ${Math.round(segment.confidence * 100)}%`} color={segment.confidence >= 0.78 ? "green" : "yellow"} size="sm" />}
             {identifiesSpeakers && onCorrectSpeaker && !segment.pending && (
               <Selector
                 label={`${segment.speaker} 화자 수정`}
@@ -537,8 +535,8 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = f
                 {compact && controls}
                 {terms.length > 0 && (
                   <Stack direction="horizontal" gap={1} wrap="wrap">
-                    {terms.map(({ term, inOrganizationGlossary }) => (
-                      <Token key={term} label={term} size="sm" color={inOrganizationGlossary ? "red" : "yellow"} />
+                    {terms.map(({ term, isKnown }) => (
+                      <Token key={term} label={term} size="sm" color={isKnown ? "green" : "red"} />
                     ))}
                     {segment.pending && <Token label="인식 중" size="sm" />}
                   </Stack>
@@ -641,17 +639,42 @@ function MeetingOverview({ segments, mode = "speaker", intelligence, terms, acti
   );
 }
 
-function StructureDiagram({ blocks }) {
+function TopicEvidence({ block }) {
+  if (!block) return null;
+  return (
+    <Card padding={4} variant="muted">
+      <Stack gap={3}>
+        <Stack direction="horizontal" justify="between" align="center" gap={2} wrap="wrap">
+          <Stack gap={0.5}>
+            <Text type="label" color="accent">선택한 주제</Text>
+            <Heading level={2}>{block.label}</Heading>
+          </Stack>
+          <Text type="code" color="secondary">{formatTime(block.start)}–{formatTime(block.end)}</Text>
+        </Stack>
+        {block.summary && <Text as="p">{block.summary}</Text>}
+        <Stack direction="horizontal" gap={1} wrap="wrap">
+          {(block.speakers || []).map((speaker) => <Token key={speaker} label={speaker} size="sm" />)}
+        </Stack>
+        <List hasDividers density="compact" header={<Heading level={3}>근거 발화 {block.segments.length}개</Heading>}>
+          {block.segments.map((segment, index) => <ListItem key={`${block.id}-evidence-${index}`} label={`${segment.speaker} · ${formatTime(segment.start)}`} description={segment.text} />)}
+        </List>
+      </Stack>
+    </Card>
+  );
+}
+
+function StructureDiagram({ blocks, selectedId, onSelect }) {
   if (!blocks.length) {
     return <Banner status="info" title="아직 구조화할 발화가 없습니다." description="녹음을 시작하면 실제 대화 순서대로 구간이 만들어집니다." />;
   }
   return (
-    <Stack direction="horizontal" gap={3} wrap="wrap" align="stretch">
-      {blocks.map((block, index) => (
-        <Card key={block.id} width={260} padding={4} variant={index === blocks.length - 1 ? "teal" : "default"}>
+    <Stack gap={4}>
+      <Stack direction="horizontal" gap={3} wrap="wrap" align="stretch">
+        {blocks.map((block, index) => (
+        <Card key={block.id} width={260} padding={4} variant={selectedId === block.id ? "teal" : "default"} elevation={selectedId === block.id ? "sm" : "none"}>
           <Stack gap={3}>
             <Stack direction="horizontal" justify="between" align="center">
-              <Token label={`구간 ${index + 1}`} color={index === blocks.length - 1 ? "teal" : "default"} size="sm" />
+              <Token label={`구간 ${index + 1}`} color={selectedId === block.id ? "teal" : "default"} size="sm" />
               <Text type="code" color="secondary">{formatTime(block.start)}–{formatTime(block.end)}</Text>
             </Stack>
             <Heading level={3}>{block.label}</Heading>
@@ -659,41 +682,45 @@ function StructureDiagram({ blocks }) {
               {block.speakers.map((speaker) => <Token key={speaker} label={speaker} size="sm" />)}
             </Stack>
             <Text type="supporting">실제 발화 {block.segments.length}개</Text>
+            <Button label={selectedId === block.id ? "근거 표시 중" : "근거 보기"} variant={selectedId === block.id ? "secondary" : "ghost"} size="sm" onClick={() => onSelect(block.id)} />
           </Stack>
         </Card>
-      ))}
+        ))}
+      </Stack>
+      <TopicEvidence block={blocks.find(({ id }) => id === selectedId)} />
     </Stack>
   );
 }
 
-function MeetingMindMap({ blocks, compact }) {
+function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
   if (!blocks.length) {
     return <Banner status="info" title="첫 발화를 기다리는 중" description="대화가 들어오면 중심 주제와 발화 구간이 연결됩니다." />;
   }
-  const visible = blocks.slice(0, 8);
-  const centerX = 320;
-  const centerY = 195;
-  const radiusX = compact ? 205 : 230;
-  const radiusY = compact ? 125 : 145;
+  const visible = blocks.slice(0, 16);
+  const centerX = 420;
+  const centerY = 310;
+  const radiusX = 325;
+  const radiusY = 245;
   const nodes = visible.map((block, index) => {
     const angle = ((Math.PI * 2) / visible.length) * index - Math.PI / 2;
     return { ...block, x: centerX + Math.cos(angle) * radiusX, y: centerY + Math.sin(angle) * radiusY };
   });
   return (
-    <Card variant="muted" padding={compact ? 2 : 4}>
-      <svg viewBox="0 0 640 390" width="100%" height={compact ? 320 : 390} role="img" aria-label={`실제 회의 발화 ${blocks.length}개 구간의 마인드맵`}>
+    <Stack gap={4}>
+      <Card variant="muted" padding={compact ? 1 : 3}>
+      <svg viewBox="0 0 840 620" width="100%" height={compact ? 420 : 560} role="img" aria-label={`실제 회의 발화 ${blocks.length}개 구간의 마인드맵`}>
         <title>실제 회의 마인드맵</title>
         {nodes.map((node) => (
           <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="var(--color-border-emphasized)" strokeWidth="2" />
         ))}
         <g>
-          <rect x="242" y="159" width="156" height="72" rx="24" fill="var(--color-accent)" />
-          <text x={centerX} y="190" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">현재 회의</text>
-          <text x={centerX} y="214" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-sm)">{blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 실제 발화</text>
+          <rect x="342" y="274" width="156" height="72" rx="24" fill="var(--color-accent)" />
+          <text x={centerX} y="305" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">현재 회의</text>
+          <text x={centerX} y="329" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-sm)">{blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 실제 발화</text>
         </g>
         {nodes.map((node, index) => (
-          <g key={node.id}>
-            <rect x={node.x - 72} y={node.y - 32} width="144" height="64" rx="20" fill="var(--color-background-card)" stroke={index === nodes.length - 1 ? "var(--color-accent)" : "var(--color-border)"} strokeWidth="2" />
+          <g key={node.id} role="button" tabIndex="0" aria-label={`${node.label} 주제 열기`} onClick={() => onSelect(node.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(node.id); }} style={{ cursor: "pointer" }}>
+            <rect x={node.x - 66} y={node.y - 30} width="132" height="60" rx="18" fill="var(--color-background-card)" stroke={selectedId === node.id ? "var(--color-accent)" : "var(--color-border)"} strokeWidth={selectedId === node.id ? "4" : "2"} />
             <text x={node.x} y={node.y - 3} textAnchor="middle" fill="var(--color-text-primary)" fontSize="var(--font-size-base)" fontWeight="var(--font-weight-semibold)">
               {node.label.length > 15 ? `${node.label.slice(0, 15)}…` : node.label}
             </text>
@@ -703,7 +730,9 @@ function MeetingMindMap({ blocks, compact }) {
           </g>
         ))}
       </svg>
-    </Card>
+      </Card>
+      <TopicEvidence block={blocks.find(({ id }) => id === selectedId)} />
+    </Stack>
   );
 }
 
@@ -761,16 +790,17 @@ function RecordingFooter({ recording, compact }) {
   );
 }
 
-function MeetingPage({ context, onContextChange, recording }) {
+function MeetingPage({ context, onContextChange, recording, vocabularyTerms, onVocabularyRefresh }) {
   const { compact, desktop } = useViewport();
   const [view, setView] = useState("outline");
   const [isInsightOpen, setInsightOpen] = useState(false);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const [intelligenceNotice, setIntelligenceNotice] = useState("");
+  const [selectedBlockId, setSelectedBlockId] = useState(null);
   const displayedSegments = recording.segments;
   const knownTerms = context.user.vocabulary?.knownTerms || [];
-  const localTerms = useMemo(() => deriveTerms(displayedSegments, knownTerms), [displayedSegments, knownTerms]);
+  const localTerms = useMemo(() => deriveTerms(displayedSegments, knownTerms, vocabularyTerms), [displayedSegments, knownTerms, vocabularyTerms]);
   const localActions = useMemo(() => deriveActions(displayedSegments), [displayedSegments]);
   const localTree = useMemo(() => buildMeetingStructure(displayedSegments), [displayedSegments]);
   const localBlocks = useMemo(() => buildStructureBlocks(displayedSegments), [displayedSegments]);
@@ -793,6 +823,7 @@ function MeetingPage({ context, onContextChange, recording }) {
       id: topic.id,
       label: `${formatTime(topic.start)} · ${topic.label}`,
       isExpanded: true,
+      onClick: () => setSelectedBlockId(topic.id),
       children: topic.subtopics.length
         ? topic.subtopics.map((label, index) => ({ id: `${topic.id}-subtopic-${index}`, label }))
         : topic.segmentIndexes.map((segmentIndex) => ({
@@ -800,9 +831,17 @@ function MeetingPage({ context, onContextChange, recording }) {
           label: `${displayedSegments[segmentIndex]?.speaker || "화자"} · ${displayedSegments[segmentIndex]?.text || ""}`
         }))
     }))
-  }] : localTree, [displayedSegments, intelligence, localTree]);
+  }] : localTree.map((root) => ({
+    ...root,
+    children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
+  })), [displayedSegments, intelligence, localTree]);
   const identifiesSpeakers = recording.mode === "speaker";
   const visibleNotice = !identifiesSpeakers && recording.notice.includes("목소리를 한 명 이상 등록") ? "" : recording.notice;
+
+  useEffect(() => {
+    if (!blocks.length) return setSelectedBlockId(null);
+    if (!blocks.some(({ id }) => id === selectedBlockId)) setSelectedBlockId(blocks[0].id);
+  }, [blocks, selectedBlockId]);
 
   useEffect(() => {
     const meeting = recording.activeMeeting;
@@ -827,6 +866,7 @@ function MeetingPage({ context, onContextChange, recording }) {
         force: Boolean(intelligence)
       });
       setIntelligence(result.intelligence);
+      await onVocabularyRefresh();
       setView("outline");
       setIntelligenceNotice(result.cached ? "저장된 분석을 불러왔습니다." : "현재 전사를 기준으로 구조를 정리했습니다.");
     } catch (error) {
@@ -861,6 +901,7 @@ function MeetingPage({ context, onContextChange, recording }) {
       onboarded: true
     });
     onContextChange(next);
+    await onVocabularyRefresh();
   };
 
   const insight = <IntelligencePanel terms={terms} actions={actions} roles={context.user.vocabulary?.roles || []} onMarkKnown={markKnown} />;
@@ -925,19 +966,20 @@ function MeetingPage({ context, onContextChange, recording }) {
                 </SegmentedControl>
               </Stack>
             </Stack>
-            {view === "outline" && <StructureDiagram blocks={blocks} />}
+            {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={setSelectedBlockId} />}
             {view === "tree" && (
               <Stack gap={4}>
                 <Card variant="muted" padding={4}>
                   <TreeList items={tree} density={compact ? "compact" : "balanced"} variant="lineGuides" header={<Heading level={2}>회의 구조 지도</Heading>} />
                 </Card>
+                <TopicEvidence block={blocks.find(({ id }) => id === selectedBlockId)} />
                 <Section padding={0}>
-                  <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} />
+                  <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />
                 </Section>
               </Stack>
             )}
-            {view === "mindmap" && <MeetingMindMap blocks={blocks} compact={compact} />}
-            {view === "transcript" && <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} />}
+            {view === "mindmap" && <MeetingMindMap blocks={blocks} compact={compact} selectedId={selectedBlockId} onSelect={setSelectedBlockId} />}
+            {view === "transcript" && <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />}
             {view === "overview" && <MeetingOverview segments={displayedSegments} mode={recording.mode} intelligence={intelligence} terms={terms} actions={actions} />}
           </Stack>
         </LayoutContent>
@@ -960,10 +1002,9 @@ function meetingDate(value) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-function DashboardPage({ context, onStart, onOpen, recording }) {
+function DashboardPage({ context, onStart, onOpen, recording, vocabularyTerms }) {
   const recentMeetings = recording.meetings.slice(0, 5);
-  const allSegments = recording.meetings.flatMap(({ segments }) => segments || []);
-  const unfamiliarTermCount = deriveTerms(allSegments, context.user.vocabulary?.knownTerms || []).filter(({ isKnown }) => !isKnown).length;
+  const unfamiliarTermCount = vocabularyTerms.filter(({ isKnown }) => !isKnown).length;
   const actionCount = deriveActions(allSegments).length;
   return (
     <Layout
@@ -1013,25 +1054,57 @@ function DocumentsPage({ meetings, onOpen }) {
   );
 }
 
-function DictionaryPage({ context, onContextChange }) {
+function DictionaryPage({ context, onContextChange, terms, onRefresh }) {
   const knownTerms = context.user.vocabulary?.knownTerms || [];
+  const [newTerm, setNewTerm] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [busy, setBusy] = useState(false);
   const toggleKnown = async (term) => {
-    const nextTerms = knownTerms.includes(term) ? knownTerms.filter((value) => value !== term) : [...knownTerms, term];
-    onContextChange(await putJson("/api/profile/vocabulary", {
-      roles: context.user.vocabulary?.roles || [], knownTerms: nextTerms, onboarded: true
-    }));
+    setBusy(true);
+    setFeedback("");
+    try {
+      const exists = knownTerms.some((value) => value.toLocaleLowerCase() === term.toLocaleLowerCase());
+      const nextTerms = exists ? knownTerms.filter((value) => value.toLocaleLowerCase() !== term.toLocaleLowerCase()) : [...knownTerms, term];
+      onContextChange(await putJson("/api/profile/vocabulary", {
+        roles: context.user.vocabulary?.roles || [], knownTerms: nextTerms, onboarded: true
+      }));
+      await onRefresh();
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addKnownTerm = async (event) => {
+    event.preventDefault();
+    const term = newTerm.trim();
+    if (!term) return;
+    if (knownTerms.some((value) => value.toLocaleLowerCase() === term.toLocaleLowerCase())) return setFeedback("이미 기지식으로 등록된 용어입니다.");
+    await toggleKnown(term);
+    setNewTerm("");
   };
   return (
     <Layout
       header={<PageHeader title="개인 용어 사전" description="아는 용어는 설명을 접고, 낯선 용어에만 업무 관점의 풀이를 제공합니다." />}
       content={(
         <LayoutContent padding={4}>
-          <List hasDividers density="spacious" header={<Heading level={2}>업무 용어</Heading>}>
-            {TERM_CATALOG.map((term) => {
-              const known = knownTerms.includes(term.term);
-              return <ListItem key={term.term} label={term.term} description={known ? "내가 아는 용어 · 회의 중 설명 접힘" : term.definition} startContent={<Token label={known ? "기지식" : "미인지"} color={known ? "green" : "red"} size="sm" />} endContent={<Button label={known ? "모르는 용어로 변경" : "아는 용어로 표시"} variant="ghost" size="sm" onClick={() => toggleKnown(term.term)} />} />;
-            })}
-          </List>
+          <Stack gap={4} maxWidth={960}>
+            <Feedback message={feedback} status="warning" onDismiss={() => setFeedback("")} />
+            <Card padding={4}>
+              <Stack as="form" direction="horizontal" gap={2} align="end" onSubmit={addKnownTerm}>
+                <TextInput label="내가 이미 아는 용어 추가" value={newTerm} onChange={setNewTerm} placeholder="실제 업무 용어 입력" width="100%" />
+                <Button type="submit" label="기지식 추가" variant="primary" isLoading={busy} isDisabled={!newTerm.trim()} />
+              </Stack>
+            </Card>
+            <List hasDividers density="spacious" header={<Heading level={2}>실제 회의에서 축적된 용어</Heading>}>
+              {terms.length ? terms.map((term) => {
+                const known = term.isKnown;
+                const evidence = term.meetingCount ? `${term.meetingCount}개 회의 · ${term.occurrences}회 감지` : "직접 등록한 기지식";
+                const description = known ? `${evidence} · 설명 접힘` : `${term.definition || "분석된 설명이 없습니다."} · ${evidence}`;
+                return <ListItem key={term.term} label={term.term} description={description} startContent={<Token label={known ? "기지식" : "미인지"} color={known ? "green" : "red"} size="sm" />} endContent={<Button label={known ? "설명 다시 보기" : "이제 알아요"} variant="ghost" size="sm" isDisabled={busy} onClick={() => toggleKnown(term.term)} />} />;
+              }) : <ListItem label="아직 축적된 용어가 없습니다" description="회의를 구조 분석하면 실제 발화에서 발견된 낯선 용어가 여기에 저장됩니다." startContent={<Icon icon="info" color="secondary" />} />}
+            </List>
+          </Stack>
         </LayoutContent>
       )}
     />
@@ -1189,6 +1262,7 @@ function SettingsPage({ context, recording }) {
 
 function Workspace({ context, onContextChange, onLogout }) {
   const [page, setPage] = useState("record");
+  const [vocabularyTerms, setVocabularyTerms] = useState([]);
   const recording = useRecording();
   const navItems = [
     ["home", "홈", "calendar"],
@@ -1197,6 +1271,20 @@ function Workspace({ context, onContextChange, onLogout }) {
     ["dictionary", "개인 용어 사전", "info"],
     ["settings", "조직 및 음성 설정", "wrench"]
   ];
+
+  const refreshVocabulary = async () => {
+    const result = await apiRequest("/api/vocabulary/terms");
+    setVocabularyTerms(result.terms || []);
+    return result.terms || [];
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/api/vocabulary/terms")
+      .then(({ terms }) => { if (!cancelled) setVocabularyTerms(terms || []); })
+      .catch(() => { if (!cancelled) setVocabularyTerms([]); });
+    return () => { cancelled = true; };
+  }, [context.organization.id, (context.user.vocabulary?.knownTerms || []).join("\u0000")]);
 
   const sideNav = (
     <SideNav
@@ -1225,11 +1313,11 @@ function Workspace({ context, onContextChange, onLogout }) {
   let content;
   const startNewMeeting = () => { recording.resetMeeting(); setPage("record"); };
   const openMeeting = (meeting) => { recording.openMeeting(meeting); setPage("record"); };
-  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} />;
+  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} />;
-  else if (page === "dictionary") content = <DictionaryPage context={context} onContextChange={onContextChange} />;
+  else if (page === "dictionary") content = <DictionaryPage context={context} onContextChange={onContextChange} terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage context={context} onContextChange={onContextChange} recording={recording} />;
+  else content = <MeetingPage context={context} onContextChange={onContextChange} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
 
   return <AppShell sideNav={sideNav} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }

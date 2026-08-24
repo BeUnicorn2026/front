@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildMeetingStructure, buildStructureBlocks, deriveActions, extractKeywords } from "../src/data/intelligence.js";
+import { buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -31,4 +31,10 @@ test("live action preview assigns only evidence-backed owners and due dates", ()
     { owner: "민수", due: "내일까지" },
     { owner: "담당 미정", due: "일정 미정" }
   ]);
+});
+
+test("matches only vocabulary extracted from real meeting data", () => {
+  const catalog = [{ term: "로그인 API", definition: "실제 분석 설명", isKnown: false }];
+  assert.deepEqual(deriveTerms(segments, [], catalog).map(({ term }) => term), ["로그인 API"]);
+  assert.deepEqual(deriveTerms(segments, [], []), []);
 });
