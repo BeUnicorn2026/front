@@ -71,6 +71,12 @@ export function applyManualSpeakerCorrections(finalSegments, liveSegments, corre
   });
 }
 
+export function servicesAfterLiveEvent(services, event) {
+  if (event.type === "preparing") return { ...services, speakerModelState: "loading" };
+  if (event.type === "ready" && event.mode === "speaker") return { ...services, speakerModelState: "ready" };
+  return services;
+}
+
 export function useRecording() {
   const [language, setLanguage] = useState("ko");
   const [mode, setMode] = useState("stt");
@@ -199,6 +205,7 @@ export function useRecording() {
   }, [saveActiveMeeting]);
 
   const handleSocketEvent = useCallback((event) => {
+    setServices((current) => servicesAfterLiveEvent(current, event));
     if (event.type === "error") {
       setNotice(event.message);
       return;
@@ -512,6 +519,7 @@ export function useRecording() {
     form.append("voice", file, file.name);
     const result = await apiRequest("/api/speakers", { method: "POST", body: form });
     setSpeakers((current) => [...current, result.speaker]);
+    setServices((current) => ({ ...current, speakerModelState: "ready" }));
     return result.speaker;
   }, []);
 
@@ -525,6 +533,7 @@ export function useRecording() {
     form.append("voice", file, file.name);
     const result = await apiRequest(`/api/speakers/${id}/samples`, { method: "POST", body: form });
     setSpeakers((current) => current.map((speaker) => speaker.id === id ? result.speaker : speaker));
+    setServices((current) => ({ ...current, speakerModelState: "ready" }));
     return result.speaker;
   }, []);
 

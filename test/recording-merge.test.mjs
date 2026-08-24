@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, correctSpeakerCluster, mergeSegments
+  applyManualSpeakerCorrections, correctSpeakerCluster, mergeSegments, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
 test("retroactively corrects earlier unknown segments from the same diarization cluster", () => {
@@ -43,4 +43,15 @@ test("manual live corrections survive final provider re-transcription by time ev
   assert.deepEqual(result.map(({ speaker }) => speaker), ["민수", "화자 B"]);
   assert.equal(result[0].corrected, true);
   assert.equal(result[0].confidence, null);
+});
+
+test("tracks speaker model preparation and readiness from live events", () => {
+  const initial = { deepgram: true, speakerModelState: "idle" };
+  const loading = servicesAfterLiveEvent(initial, { type: "preparing", elapsedSeconds: 15 });
+  assert.equal(loading.speakerModelState, "loading");
+  assert.equal(loading.deepgram, true);
+
+  const ready = servicesAfterLiveEvent(loading, { type: "ready", mode: "speaker" });
+  assert.equal(ready.speakerModelState, "ready");
+  assert.strictEqual(servicesAfterLiveEvent(ready, { type: "transcript" }), ready);
 });
