@@ -28,7 +28,7 @@ import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, buildMeetingStructure, buildStructureBlocks,
+  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms
 } from "./data/intelligence";
 import { useRecording } from "./features/recording/useRecording";
@@ -868,33 +868,17 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
   const localActions = useMemo(() => deriveActions(displayedSegments), [displayedSegments]);
   const localTree = useMemo(() => buildMeetingStructure(displayedSegments), [displayedSegments]);
   const localBlocks = useMemo(() => buildStructureBlocks(displayedSegments), [displayedSegments]);
+  const analyzedStructure = useMemo(() => buildAnalyzedStructure(intelligence, displayedSegments), [displayedSegments, intelligence]);
   const terms = useMemo(() => intelligence?.terms || localTerms, [intelligence, localTerms]);
   const actions = intelligence?.actions || localActions;
-  const blocks = useMemo(() => intelligence?.topics?.length ? intelligence.topics.map((topic) => ({
-    ...topic,
-    segments: topic.segmentIndexes.map((index) => displayedSegments[index]).filter(Boolean),
-    keywords: topic.subtopics || []
-  })) : localBlocks, [displayedSegments, intelligence, localBlocks]);
-  const tree = useMemo(() => intelligence?.topics?.length ? [{
-    id: "meeting-intelligence",
-    label: intelligence.title,
-    isExpanded: true,
-    children: intelligence.topics.map((topic) => ({
-      id: topic.id,
-      label: `${formatTime(topic.start)} · ${topic.label}`,
-      isExpanded: true,
-      onClick: () => setSelectedBlockId(topic.id),
-      children: topic.subtopics.length
-        ? topic.subtopics.map((label, index) => ({ id: `${topic.id}-subtopic-${index}`, label }))
-        : topic.segmentIndexes.map((segmentIndex) => ({
-          id: `${topic.id}-segment-${segmentIndex}`,
-          label: `${displayedSegments[segmentIndex]?.speaker || "화자"} · ${displayedSegments[segmentIndex]?.text || ""}`
-        }))
-    }))
-  }] : localTree.map((root) => ({
+  const blocks = analyzedStructure.blocks.length ? analyzedStructure.blocks : localBlocks;
+  const tree = useMemo(() => analyzedStructure.tree.length ? analyzedStructure.tree.map((root) => ({
     ...root,
     children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
-  })), [displayedSegments, intelligence, localTree]);
+  })) : localTree.map((root) => ({
+    ...root,
+    children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
+  })), [analyzedStructure.tree, localTree]);
   const identifiesSpeakers = recording.mode === "speaker";
   const visibleNotice = !identifiesSpeakers && recording.notice.includes("목소리를 한 명 이상 등록") ? "" : recording.notice;
 

@@ -89,6 +89,56 @@ export function buildMeetingStructure(segments) {
   }];
 }
 
+export function buildAnalyzedStructure(intelligence, segments) {
+  const sourceSegments = Array.isArray(segments) ? segments : [];
+  const blocks = (Array.isArray(intelligence?.topics) ? intelligence.topics : []).map((topic, topicIndex) => {
+    const segmentIndexes = [...new Set((Array.isArray(topic?.segmentIndexes) ? topic.segmentIndexes : [])
+      .map(Number).filter((index) => Number.isInteger(index) && index >= 0 && index < sourceSegments.length))];
+    const evidence = segmentIndexes.map((index) => sourceSegments[index]).filter(Boolean);
+    if (!evidence.length) return null;
+    const keywords = (Array.isArray(topic?.subtopics) ? topic.subtopics : [])
+      .map((value) => String(value || "").trim()).filter(Boolean).slice(0, 8);
+    const label = String(topic?.label || "").trim() || extractKeywords(evidence, 3).join(" · ") || `대화 구간 ${topicIndex + 1}`;
+    return {
+      id: String(topic?.id || `topic-${segmentIndexes[0]}`),
+      index: topicIndex,
+      label,
+      summary: String(topic?.summary || "").trim(),
+      start: Math.min(...evidence.map(({ start }) => Math.max(0, Number(start) || 0))),
+      end: Math.max(...evidence.map(({ end, start }) => Math.max(0, Number(end) || Number(start) || 0))),
+      segmentIndexes,
+      segments: evidence,
+      keywords,
+      speakers: [...new Set(evidence.map(({ speaker }) => String(speaker || "미등록 화자")))]
+    };
+  }).filter(Boolean);
+  if (!blocks.length) return { blocks: [], tree: [] };
+  const title = String(intelligence?.title || "").trim() || "회의 구조";
+  return {
+    blocks,
+    tree: [{
+      id: "meeting-intelligence",
+      label: title,
+      isExpanded: true,
+      children: blocks.map((block) => ({
+        id: block.id,
+        label: `${formatTime(block.start)} · ${block.label}`,
+        isExpanded: true,
+        children: [
+          ...block.keywords.map((keyword, index) => ({
+            id: `${block.id}-keyword-${index}`,
+            label: `핵심 · ${keyword}`
+          })),
+          ...block.segments.map((segment, index) => ({
+            id: `${block.id}-segment-${block.segmentIndexes[index]}`,
+            label: `${segment.speaker || "미등록 화자"} · ${segment.text || ""}`
+          }))
+        ]
+      }))
+    }]
+  };
+}
+
 export function deriveTerms(segments, knownTerms = [], catalog = []) {
   const known = new Set(knownTerms.map((term) => term.toLocaleLowerCase()));
   const found = new Map();

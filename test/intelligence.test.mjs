@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -20,6 +20,22 @@ test("derives structure blocks and labels only from actual transcript", () => {
 
 test("extracts repeated transcript keywords without seeded topic names", () => {
   assert.ok(extractKeywords(segments, 4).includes("로그인"));
+});
+
+test("uses one validated evidence model for analyzed outline, tree and mind map", () => {
+  const structure = buildAnalyzedStructure({
+    title: "인증 회의",
+    topics: [
+      { id: "topic-auth", label: "인증 수정", summary: "근거 요약", segmentIndexes: [0, 1, 99, 1], subtopics: ["로그인"] },
+      { id: "topic-stale", label: "오래된 구간", segmentIndexes: [99], subtopics: [] }
+    ]
+  }, segments);
+  assert.equal(structure.blocks.length, 1);
+  assert.deepEqual(structure.blocks[0].segmentIndexes, [0, 1]);
+  assert.deepEqual(structure.blocks[0].speakers, ["민수", "지수"]);
+  assert.equal(structure.tree[0].children.length, 1);
+  assert.match(structure.tree[0].children[0].children.at(-1).label, /지수.*로그인 API 테스트/);
+  assert.equal(structure.tree[0].children.some(({ id }) => id === "topic-stale"), false);
 });
 
 test("live action preview assigns only evidence-backed owners and due dates", () => {
