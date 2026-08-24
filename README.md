@@ -13,6 +13,12 @@ To use another backend:
 VOICE_PARTITION_API_ORIGIN=http://localhost:3001 npm run dev
 ```
 
+Production API origin:
+
+```bash
+VITE_API_ORIGIN=https://api.example.com npm run build
+```
+
 ```bash
 npm test
 npm run build

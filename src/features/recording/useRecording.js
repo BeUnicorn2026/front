@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiRequest, patchJson, postJson } from "../../api.js";
+import { apiRequest, patchJson, postJson, websocketUrl } from "../../api.js";
 
 export function mergeSegments(committed, incoming) {
   const next = committed.map((segment) => ({ ...segment }));
@@ -238,9 +238,8 @@ export function useRecording() {
   }), []);
 
   const openLiveSocket = useCallback(() => new Promise((resolve, reject) => {
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     const parameters = new URLSearchParams({ language: languageRef.current, mode: modeRef.current });
-    const socket = new WebSocket(`${scheme}//${location.host}/api/live?${parameters}`);
+    const socket = new WebSocket(websocketUrl(`/api/live?${parameters}`));
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     let ready = false;

@@ -1,4 +1,15 @@
 let csrfToken = "";
+const configuredApiOrigin = String(import.meta.env?.VITE_API_ORIGIN || "").replace(/\/$/, "");
+
+export function apiUrl(path) {
+  return configuredApiOrigin ? new URL(path, `${configuredApiOrigin}/`).toString() : path;
+}
+
+export function websocketUrl(path) {
+  const url = new URL(path, configuredApiOrigin || window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
 
 export async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -9,7 +20,7 @@ export async function apiRequest(path, options = {}) {
     headers.set("Content-Type", "application/json");
     body = JSON.stringify(body);
   }
-  const response = await fetch(path, { ...options, headers, body, credentials: "same-origin" });
+  const response = await fetch(apiUrl(path), { ...options, headers, body, credentials: "include" });
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
