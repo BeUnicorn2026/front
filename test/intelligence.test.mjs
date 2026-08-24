@@ -38,3 +38,16 @@ test("matches only vocabulary extracted from real meeting data", () => {
   assert.deepEqual(deriveTerms(segments, [], catalog).map(({ term }) => term), ["로그인 API"]);
   assert.deepEqual(deriveTerms(segments, [], []), []);
 });
+
+test("preserves server knowledge state while matching live transcript terms", () => {
+  const catalog = [{
+    term: "임베딩",
+    isKnown: false,
+    shouldExplain: true,
+    knowledge: { pKnown: 0.08, status: "unknown", evidenceCount: 1 }
+  }];
+  const terms = deriveTerms([{ speaker: "민수", start: 0, end: 2, text: "임베딩을 사용합니다." }], ["임베딩"], catalog);
+  assert.equal(terms[0].isKnown, false);
+  assert.equal(terms[0].knowledge.pKnown, 0.08);
+  assert.equal(terms[0].shouldExplain, true);
+});

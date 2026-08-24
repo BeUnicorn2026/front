@@ -552,7 +552,12 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = f
   );
 }
 
-function IntelligencePanel({ terms, actions, roles, onMarkKnown }) {
+function IntelligencePanel({ terms, actions, roles, onEvidence, busyTerm }) {
+  const [openedTerms, setOpenedTerms] = useState(() => new Set());
+  const openExplanation = (term) => {
+    setOpenedTerms((current) => new Set(current).add(term.conceptId || term.term));
+    onEvidence(term, "card_open");
+  };
   return (
     <Stack gap={4}>
       <Stack gap={1}>
@@ -562,44 +567,51 @@ function IntelligencePanel({ terms, actions, roles, onMarkKnown }) {
         </Stack>
         <Text type="supporting">{roles.length ? `${roles.join(" · ")} 관점으로 설명 중` : "일반 업무 관점으로 설명 중"}</Text>
       </Stack>
-      <Stack gap={3}>
-        {terms.map((term) => (
-          <Card key={term.term} variant={term.isKnown ? "green" : "red"} padding={3}>
-            <Stack gap={2}>
-              <Stack direction="horizontal" gap={1} wrap="wrap" align="center">
-                <Token label={term.term} color={term.isKnown ? "green" : "red"} size="sm" />
-                {!term.inOrganizationGlossary && <Token label="조직 신규" color="yellow" size="sm" />}
+      <Stack gap={4}>
+        <List hasDividers header={<Heading level={3}>개인 용어</Heading>}>
+          {terms.map((term) => {
+            const isOpen = term.shouldExplain || openedTerms.has(term.conceptId || term.term);
+            const knowledge = term.knowledge;
+            const percentage = Math.round((knowledge?.pKnown ?? (term.isKnown ? 1 : 0.35)) * 100);
+            const statusLabel = knowledge?.status === "known" ? "이해함" : knowledge?.status === "unknown" ? "설명 필요" : "학습 중";
+            const controls = isOpen ? (
+              <Stack direction="horizontal" gap={1} wrap="wrap" justify="end">
+                <Button label="더 쉽게" variant="ghost" size="sm" isDisabled={busyTerm === term.term} onClick={() => onEvidence(term, "request_simpler")} />
+                <Button
+                  label={term.isKnown ? "잘 모르겠어요" : "이제 알아요"}
+                  variant="secondary"
+                  size="sm"
+                  isLoading={busyTerm === term.term}
+                  onClick={() => onEvidence(term, term.isKnown ? "mark_unknown" : "mark_known")}
+                />
               </Stack>
-              {term.isKnown ? (
-                <Text type="supporting">이미 아는 용어 · 설명 접힘</Text>
-              ) : (
-                <Stack gap={2}>
-                  <Text as="p">{term.definition}</Text>
-                  <Text type="supporting" as="p">{term.personalizedExplanation || term.roleHints?.[roles[0]] || "현재 회의 문맥에서 이해해야 하는 개념입니다."}</Text>
-                  <Stack direction="horizontal" justify="end">
-                    <Button label="이제 알아요" variant="secondary" size="sm" onClick={() => onMarkKnown(term.term)} />
+            ) : <Button label="설명 보기" variant="ghost" size="sm" isDisabled={busyTerm === term.term} onClick={() => openExplanation(term)} />;
+            return (
+              <ListItem
+                key={term.conceptId || term.term}
+                label={term.term}
+                startContent={<Token label={statusLabel} color={term.isKnown ? "green" : knowledge?.status === "unknown" ? "red" : "yellow"} size="sm" />}
+                endContent={controls}
+                description={(
+                  <Stack gap={2}>
+                    <ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel />
+                    <Text type="supporting">{knowledge?.evidenceCount ? `내 피드백 ${knowledge.evidenceCount}개 기반` : knowledge?.source === "explicit_prior" ? "온보딩에서 직접 등록한 기지식" : "아직 피드백이 없는 초기 추정"}</Text>
+                    {isOpen && <Text as="p">{term.personalizedExplanation || term.definition || term.roleHints?.[roles[0]] || "이 용어에 대한 기본 설명을 준비 중입니다."}</Text>}
                   </Stack>
-                </Stack>
-              )}
-            </Stack>
-          </Card>
-        ))}
-        {actions.map((action) => (
-          <Card key={action.id} variant="teal" padding={3}>
-            <Stack gap={2}>
-              <Stack direction="horizontal" justify="between" align="center">
-                <Token label="액션 아이템" color="teal" size="sm" />
-                <Text type="code" color="secondary">{action.due}</Text>
-              </Stack>
-              <Text as="p">{action.text}</Text>
-              <Text type="supporting">담당 · {action.owner}</Text>
-            </Stack>
-          </Card>
-        ))}
+                )}
+              />
+            );
+          })}
+          {!terms.length && <ListItem label="감지된 개인 용어가 없습니다" description="회의 분석에서 실제 전문용어가 발견되면 이해 상태와 함께 표시됩니다." startContent={<Icon icon="info" color="secondary" />} />}
+        </List>
+        <List hasDividers header={<Heading level={3}>액션 아이템</Heading>}>
+          {actions.map((action) => (
+            <ListItem key={action.id} label={action.text} description={`담당 · ${action.owner}`} startContent={<Token label="할 일" color="teal" size="sm" />} endContent={<Text type="code" color="secondary">{action.due}</Text>} />
+          ))}
+          {!actions.length && <ListItem label="감지된 액션이 없습니다" description="담당이나 기한이 실제 발화로 확인되면 여기에 표시됩니다." startContent={<Icon icon="info" color="secondary" />} />}
+        </List>
         {!terms.length && !actions.length && (
-          <Card variant="muted" padding={4}>
-            <Text color="secondary" as="p">용어나 할 일이 감지되면 발화 옆과 이 패널에 함께 표시됩니다.</Text>
-          </Card>
+          <Banner status="info" title="회의 이해 정보가 아직 없습니다." description="용어나 할 일이 감지되면 발화 옆과 이 패널에 함께 표시됩니다." />
         )}
       </Stack>
     </Stack>
@@ -790,13 +802,14 @@ function RecordingFooter({ recording, compact }) {
   );
 }
 
-function MeetingPage({ context, onContextChange, recording, vocabularyTerms, onVocabularyRefresh }) {
+function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh }) {
   const { compact, desktop } = useViewport();
   const [view, setView] = useState("outline");
   const [isInsightOpen, setInsightOpen] = useState(false);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const [intelligenceNotice, setIntelligenceNotice] = useState("");
+  const [knowledgeBusyTerm, setKnowledgeBusyTerm] = useState("");
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const displayedSegments = recording.segments;
   const knownTerms = context.user.vocabulary?.knownTerms || [];
@@ -804,11 +817,7 @@ function MeetingPage({ context, onContextChange, recording, vocabularyTerms, onV
   const localActions = useMemo(() => deriveActions(displayedSegments), [displayedSegments]);
   const localTree = useMemo(() => buildMeetingStructure(displayedSegments), [displayedSegments]);
   const localBlocks = useMemo(() => buildStructureBlocks(displayedSegments), [displayedSegments]);
-  const terms = useMemo(() => intelligence?.terms?.map((term) => ({
-    ...term,
-    isKnown: knownTerms.some((known) => known.toLocaleLowerCase() === term.term.toLocaleLowerCase()),
-    inOrganizationGlossary: false
-  })) || localTerms, [intelligence, knownTerms, localTerms]);
+  const terms = useMemo(() => intelligence?.terms || localTerms, [intelligence, localTerms]);
   const actions = intelligence?.actions || localActions;
   const blocks = useMemo(() => intelligence?.topics?.length ? intelligence.topics.map((topic) => ({
     ...topic,
@@ -892,19 +901,42 @@ function MeetingPage({ context, onContextChange, recording, vocabularyTerms, onV
     />
   );
 
-  const markKnown = async (term) => {
-    const vocabulary = context.user.vocabulary || { roles: [], knownTerms: [] };
-    if (vocabulary.knownTerms.includes(term)) return;
-    const next = await putJson("/api/profile/vocabulary", {
-      roles: vocabulary.roles,
-      knownTerms: [...vocabulary.knownTerms, term],
-      onboarded: true
-    });
-    onContextChange(next);
-    await onVocabularyRefresh();
+  const recordKnowledgeEvidence = async (term, kind) => {
+    if (!term?.term || knowledgeBusyTerm) return;
+    setKnowledgeBusyTerm(term.term);
+    setIntelligenceNotice("");
+    try {
+      const meeting = recording.activeMeeting;
+      const eventId = kind === "card_open" && meeting?.id
+        ? `card:${meeting.id}:${term.conceptId || term.term}`
+        : crypto.randomUUID();
+      await postJson("/api/knowledge/evidence", {
+        term: term.term,
+        kind,
+        eventId,
+        meetingId: meeting?.id || null,
+        segmentIndex: Number.isInteger(term.evidenceSegmentIndex) ? term.evidenceSegmentIndex : null
+      });
+      if (meeting?.id && intelligence) {
+        const refreshed = await apiRequest(`/api/meetings/${meeting.id}/intelligence`);
+        setIntelligence(refreshed.intelligence);
+      }
+      await onVocabularyRefresh();
+      const feedback = {
+        mark_known: "이해 상태를 ‘알아요’로 반영했습니다.",
+        mark_unknown: "설명이 필요하다고 반영했습니다.",
+        request_simpler: "다음 설명을 더 쉬운 수준으로 조정했습니다.",
+        card_open: "설명을 펼쳤습니다. 이 신호는 이해도에 아주 약하게만 반영됩니다."
+      };
+      setIntelligenceNotice(feedback[kind] || "이해 상태를 반영했습니다.");
+    } catch (error) {
+      setIntelligenceNotice(error.message);
+    } finally {
+      setKnowledgeBusyTerm("");
+    }
   };
 
-  const insight = <IntelligencePanel terms={terms} actions={actions} roles={context.user.vocabulary?.roles || []} onMarkKnown={markKnown} />;
+  const insight = <IntelligencePanel terms={terms} actions={actions} roles={context.user.vocabulary?.roles || []} onEvidence={recordKnowledgeEvidence} busyTerm={knowledgeBusyTerm} />;
 
   return (
     <>
@@ -1054,33 +1086,29 @@ function DocumentsPage({ meetings, onOpen }) {
   );
 }
 
-function DictionaryPage({ context, onContextChange, terms, onRefresh }) {
-  const knownTerms = context.user.vocabulary?.knownTerms || [];
+function DictionaryPage({ terms, onRefresh }) {
   const [newTerm, setNewTerm] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [busy, setBusy] = useState(false);
-  const toggleKnown = async (term) => {
-    setBusy(true);
+  const [busyTerm, setBusyTerm] = useState("");
+  const submitEvidence = async (term, kind) => {
+    setBusyTerm(term);
     setFeedback("");
     try {
-      const exists = knownTerms.some((value) => value.toLocaleLowerCase() === term.toLocaleLowerCase());
-      const nextTerms = exists ? knownTerms.filter((value) => value.toLocaleLowerCase() !== term.toLocaleLowerCase()) : [...knownTerms, term];
-      onContextChange(await putJson("/api/profile/vocabulary", {
-        roles: context.user.vocabulary?.roles || [], knownTerms: nextTerms, onboarded: true
-      }));
+      await postJson("/api/knowledge/evidence", { term, kind, eventId: crypto.randomUUID() });
       await onRefresh();
+      setFeedback(kind === "mark_known" ? `${term}을 아는 개념으로 반영했습니다.` : `${term}에 설명이 필요하다고 반영했습니다.`);
     } catch (error) {
       setFeedback(error.message);
     } finally {
-      setBusy(false);
+      setBusyTerm("");
     }
   };
   const addKnownTerm = async (event) => {
     event.preventDefault();
     const term = newTerm.trim();
     if (!term) return;
-    if (knownTerms.some((value) => value.toLocaleLowerCase() === term.toLocaleLowerCase())) return setFeedback("이미 기지식으로 등록된 용어입니다.");
-    await toggleKnown(term);
+    if (terms.some((value) => value.term.toLocaleLowerCase() === term.toLocaleLowerCase() && value.isKnown)) return setFeedback("이미 아는 개념으로 등록된 용어입니다.");
+    await submitEvidence(term, "mark_known");
     setNewTerm("");
   };
   return (
@@ -1090,18 +1118,26 @@ function DictionaryPage({ context, onContextChange, terms, onRefresh }) {
         <LayoutContent padding={4}>
           <Stack gap={4} maxWidth={960}>
             <Feedback message={feedback} status="warning" onDismiss={() => setFeedback("")} />
+            <Banner status="info" title="이 지식 상태는 본인에게만 보입니다." description="회의 참여자와 조직 관리자는 이해 확률이나 피드백 기록을 조회할 수 없습니다. 직접 선택한 피드백이 자동 추정보다 항상 우선합니다." />
             <Card padding={4}>
               <Stack as="form" direction="horizontal" gap={2} align="end" onSubmit={addKnownTerm}>
                 <TextInput label="내가 이미 아는 용어 추가" value={newTerm} onChange={setNewTerm} placeholder="실제 업무 용어 입력" width="100%" />
-                <Button type="submit" label="기지식 추가" variant="primary" isLoading={busy} isDisabled={!newTerm.trim()} />
+                <Button type="submit" label="아는 개념 추가" variant="primary" isLoading={busyTerm === newTerm.trim()} isDisabled={!newTerm.trim() || Boolean(busyTerm)} />
               </Stack>
             </Card>
             <List hasDividers density="spacious" header={<Heading level={2}>실제 회의에서 축적된 용어</Heading>}>
               {terms.length ? terms.map((term) => {
                 const known = term.isKnown;
                 const evidence = term.meetingCount ? `${term.meetingCount}개 회의 · ${term.occurrences}회 감지` : "직접 등록한 기지식";
-                const description = known ? `${evidence} · 설명 접힘` : `${term.definition || "분석된 설명이 없습니다."} · ${evidence}`;
-                return <ListItem key={term.term} label={term.term} description={description} startContent={<Token label={known ? "기지식" : "미인지"} color={known ? "green" : "red"} size="sm" />} endContent={<Button label={known ? "설명 다시 보기" : "이제 알아요"} variant="ghost" size="sm" isDisabled={busy} onClick={() => toggleKnown(term.term)} />} />;
+                const percentage = Math.round((term.knowledge?.pKnown ?? (known ? 1 : 0.35)) * 100);
+                const statusLabel = known ? "이해함" : term.knowledge?.status === "unknown" ? "설명 필요" : "학습 중";
+                return <ListItem
+                  key={term.conceptId || term.term}
+                  label={term.term}
+                  description={<Stack gap={2}><Text type="supporting">{term.definition || "직접 등록한 개념입니다."} · {evidence}</Text><ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel /><Text type="supporting">{term.knowledge?.evidenceCount ? `내 피드백 ${term.knowledge.evidenceCount}개 기반` : "초기 추정"}</Text></Stack>}
+                  startContent={<Token label={statusLabel} color={known ? "green" : term.knowledge?.status === "unknown" ? "red" : "yellow"} size="sm" />}
+                  endContent={<Button label={known ? "잘 모르겠어요" : "이제 알아요"} variant="ghost" size="sm" isLoading={busyTerm === term.term} isDisabled={Boolean(busyTerm) && busyTerm !== term.term} onClick={() => submitEvidence(term.term, known ? "mark_unknown" : "mark_known")} />}
+                />;
               }) : <ListItem label="아직 축적된 용어가 없습니다" description="회의를 구조 분석하면 실제 발화에서 발견된 낯선 용어가 여기에 저장됩니다." startContent={<Icon icon="info" color="secondary" />} />}
             </List>
           </Stack>
@@ -1322,9 +1358,9 @@ function Workspace({ context, onContextChange, onLogout }) {
   const openMeeting = (meeting) => { recording.openMeeting(meeting); setPage("record"); };
   if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} />;
-  else if (page === "dictionary") content = <DictionaryPage context={context} onContextChange={onContextChange} terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
+  else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage context={context} onContextChange={onContextChange} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
+  else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
 
   return <AppShell sideNav={sideNav} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }

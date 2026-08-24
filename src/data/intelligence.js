@@ -97,7 +97,7 @@ export function deriveTerms(segments, knownTerms = [], catalog = []) {
       if (!found.has(term.term)) {
         found.set(term.term, {
           ...term,
-          isKnown: known.has(term.term.toLocaleLowerCase()),
+          isKnown: term.isKnown ?? known.has(term.term.toLocaleLowerCase()),
           firstSeenAt: segment.start,
           speaker: segment.speaker
         });
