@@ -754,6 +754,7 @@ function StructureDiagram({ blocks, selectedId, onSelect, isRecording }) {
                 <Text type="code" color="secondary">{formatTime(block.start)}</Text>
               </Stack>
             )}
+            isSelected={selectedId === block.id}
             onClick={() => onSelect(block.id)}
           />
         ))}
@@ -954,11 +955,19 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
   }, []);
   const tree = useMemo(() => analyzedStructure.tree.length ? analyzedStructure.tree.map((root) => ({
     ...root,
-    children: (root.children || []).map((block) => ({ ...block, onClick: () => selectStructureBlock(block.id) }))
+    children: (root.children || []).map((block) => ({
+      ...block,
+      isSelected: block.id === selectedBlockId,
+      onClick: () => selectStructureBlock(block.id)
+    }))
   })) : localTree.map((root) => ({
     ...root,
-    children: (root.children || []).map((block) => ({ ...block, onClick: () => selectStructureBlock(block.id) }))
-  })), [analyzedStructure.tree, localTree, selectStructureBlock]);
+    children: (root.children || []).map((block) => ({
+      ...block,
+      isSelected: block.id === selectedBlockId,
+      onClick: () => selectStructureBlock(block.id)
+    }))
+  })), [analyzedStructure.tree, localTree, selectStructureBlock, selectedBlockId]);
   const identifiesSpeakers = recording.mode === "speaker";
   const unverifiedSpeakerCount = recording.speakers.filter((speaker) => !speaker.crossSessionVerificationCount).length;
   const visibleNotice = !identifiesSpeakers && recording.notice.includes("목소리를 한 명 이상 등록") ? "" : recording.notice;
