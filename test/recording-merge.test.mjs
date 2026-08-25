@@ -60,6 +60,22 @@ test("retroactively corrects earlier unknown segments from the same diarization 
   assert.equal(result[0].text, "첫 발화 다음 발화");
 });
 
+test("revises earlier model labels after sustained speaker evidence without overriding manual corrections", () => {
+  const committed = [
+    { speaker: "민수", sourceSpeaker: "0", known: true, confidence: 0.82, start: 0, end: 1, text: "초기 판정" },
+    { speaker: "민수", sourceSpeaker: "0", known: true, corrected: true, confidence: null, start: 2, end: 3, text: "직접 확인" }
+  ];
+  const incoming = [
+    { speaker: "지수", sourceSpeaker: "0", known: true, confidence: 0.93, start: 4, end: 5, text: "반복 증거" }
+  ];
+
+  const result = mergeSegments(committed, incoming);
+  assert.equal(result[0].speaker, "지수");
+  assert.equal(result[0].confidence, 0.93);
+  assert.equal(result[1].speaker, "민수");
+  assert.equal(result[1].corrected, true);
+});
+
 test("manual correction updates every segment in the same provider cluster", () => {
   const segments = [
     { id: "a", speaker: "미등록 화자 A", sourceSpeaker: "0", confidence: 0.7, start: 0, end: 1, text: "첫째" },

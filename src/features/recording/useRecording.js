@@ -6,7 +6,10 @@ export function mergeSegments(committed, incoming) {
   for (const segment of incoming) {
     if (segment.known && segment.sourceSpeaker != null) {
       for (const previousSegment of next) {
-        if (previousSegment.sourceSpeaker === segment.sourceSpeaker && !previousSegment.known) {
+        const sameProviderCluster = previousSegment.sourceSpeaker === segment.sourceSpeaker;
+        const modelIdentityChanged = !previousSegment.corrected
+          && (!previousSegment.known || previousSegment.speaker !== segment.speaker);
+        if (sameProviderCluster && modelIdentityChanged) {
           previousSegment.speaker = segment.speaker;
           previousSegment.known = true;
           previousSegment.confidence = segment.confidence;
