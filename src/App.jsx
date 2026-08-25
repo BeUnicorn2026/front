@@ -493,6 +493,7 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectTe
           const controls = (
             <Stack direction="horizontal" gap={2} align="center" wrap="wrap">
               <Text type="code" color="secondary">{formatTime(segment.start)}</Text>
+              {segment.pending && <Token label="인식 중" color="yellow" size="sm" />}
               {segment.corrected && <Token label="화자 직접 확인" color="teal" size="sm" />}
               {segment.transcriptCorrected && <Token label="문장 직접 수정" color="teal" size="sm" />}
               {segment.confidence != null && <Token label={`음성 유사도 ${Math.round(segment.confidence * 100)}%`} color={segment.confidence >= 0.78 ? "green" : "yellow"} size="sm" />}
@@ -527,7 +528,6 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectTe
                   {terms.length > 0 && (
                     <Stack direction="horizontal" gap={1} wrap="wrap">
                       {terms.map(({ term, isKnown }) => <Token key={term} label={term} size="sm" color={isKnown ? "green" : "red"} />)}
-                      {segment.pending && <Token label="인식 중" size="sm" />}
                     </Stack>
                   )}
                 </Stack>
