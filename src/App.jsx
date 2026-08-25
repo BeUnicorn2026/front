@@ -1593,8 +1593,10 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";
   const displayedElapsed = readOnly ? recording.activeMeeting?.duration || recording.elapsed : recording.elapsed;
   const userRole = user?.vocabulary?.roles?.[0] || "회의 참가자";
+  const userAvatar = user?.avatarUrl || user?.profileImageUrl || user?.imageUrl;
   const selectedMicrophone = recording.audioInputs.find(({ deviceId }) => deviceId === recording.selectedAudioInputId);
   const microphoneLabel = selectedMicrophone?.label || "시스템 기본 마이크";
+  const meetingControlHeight = "calc(var(--spacing-10) * 2 + var(--spacing-2))";
 
   const copyText = async (value, successMessage) => {
     try {
@@ -1685,10 +1687,13 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
           transition
         }}
       >
-        <Stack direction="horizontal" justify="between" align="center" gap={3}>
-          <Stack gap={0.5}>
-            <Heading level={3}>내 상태</Heading>
-            <Text type="supporting" color="secondary">{userRole}</Text>
+        <Stack direction="horizontal" justify="between" align="center" gap={4}>
+          <Stack direction="horizontal" align="center" gap={3} style={{ minWidth: 0 }}>
+            <Avatar src={userAvatar} name={user?.name || "나"} size="lg" tooltip={false} />
+            <Stack gap={0.5} style={{ minWidth: 0 }}>
+              <Heading level={3} maxLines={1}>{user?.name || "나"}</Heading>
+              <Text type="supporting" color="secondary" maxLines={1}>{userRole}</Text>
+            </Stack>
           </Stack>
           <StatusDot
             variant={readOnly ? "neutral" : recording.isRecording ? "error" : "success"}
@@ -1772,7 +1777,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
         )}
         footer={desktop ? (
           <LayoutFooter label={readOnly ? "회의 기록 제어" : "회의 제어"}>
-            <Stack data-desktop-meeting-controls width="100%" paddingInline={6} paddingBlock={4} style={{ background: "var(--color-background-body)" }}>
+            <Stack data-desktop-meeting-controls width="100%" height={meetingControlHeight} paddingInline={6} paddingBlock={4} style={{ background: "var(--color-background-body)" }}>
               <Toolbar
                 label={readOnly ? "회의 기록 제어" : "데스크톱 회의 제어"}
                 size="lg"
@@ -1790,12 +1795,13 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
           data-room-invite-drawer
           aria-label="회의 초대 정보"
           width={compact ? "calc(100% - var(--spacing-3))" : "calc(var(--spacing-10) * 9)"}
+          height={desktop ? meetingControlHeight : "auto"}
           direction="horizontal"
           align="stretch"
           style={{
             position: "fixed",
             insetInlineEnd: 0,
-            bottom: desktop ? "calc(var(--spacing-10) * 3)" : "var(--spacing-4)",
+            bottom: desktop ? "var(--spacing-0)" : "var(--spacing-4)",
             zIndex: 3,
             overflow: "hidden",
             border: "var(--border-width) solid var(--color-border)",
@@ -1817,17 +1823,35 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
               aria-expanded={inviteOpen}
             />
           </Stack>
-          <Stack width="100%" padding={4} gap={3} style={{ minWidth: 0 }}>
-            <Stack direction="horizontal" justify="between" align="center" gap={3}>
+          <Stack
+            width="100%"
+            direction={desktop ? "horizontal" : "vertical"}
+            align={desktop ? "center" : "stretch"}
+            paddingInline={4}
+            paddingBlock={desktop ? 2 : 4}
+            gap={desktop ? 4 : 3}
+            style={{ minWidth: 0 }}
+          >
+            <Stack direction="horizontal" align="center" gap={2} style={{ flex: "none" }}>
               <Stack gap={0.5}>
                 <Text type="supporting" color="secondary">방 코드</Text>
-                <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-2xl)", letterSpacing: "var(--spacing-2)" }}>{roomCode}</Text>
+                <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-xl)", letterSpacing: "var(--spacing-1)" }}>{roomCode}</Text>
               </Stack>
-              <IconButton label="방 코드 복사" icon={<Icon icon="copy" />} variant="secondary" onClick={() => copyText(roomCode, "방 코드를 복사했습니다.")} />
+              <IconButton label="방 코드 복사" icon={<Icon icon="copy" />} variant="ghost" size="sm" onClick={() => copyText(roomCode, "방 코드를 복사했습니다.")} />
             </Stack>
-            <Text type="supporting" color="secondary" maxLines={1}>{roomLink}</Text>
-            <Button label="초대 링크 복사" icon={<Icon icon="link" />} variant="primary" width="100%" onClick={() => copyText(roomLink, "초대 링크를 복사했습니다.")} />
-            {copyNotice && <Text type="supporting" color="accent">{copyNotice}</Text>}
+            <Stack
+              width="100%"
+              direction="horizontal"
+              align="center"
+              gap={2}
+              paddingInlineStart={desktop ? 4 : 0}
+              style={{ minWidth: 0, borderInlineStart: desktop ? "var(--border-width) solid var(--color-border)" : "var(--spacing-0)" }}
+            >
+              <Text type="supporting" color={copyNotice ? "accent" : "secondary"} maxLines={1} style={{ minWidth: 0 }}>
+                {copyNotice || roomLink}
+              </Text>
+              <Button label="초대 링크 복사" icon={<Icon icon="link" />} variant="primary" size="sm" onClick={() => copyText(roomLink, "초대 링크를 복사했습니다.")} style={{ flex: "none" }} />
+            </Stack>
           </Stack>
         </Stack>
       )}

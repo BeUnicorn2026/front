@@ -19,12 +19,17 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /aria-controls="meeting-participant-status"/);
   assert.match(room, /width: participantOpen \? "calc\(var\(--spacing-10\) \* 9\)" : "calc\(var\(--spacing-10\) \* 7\)"/);
   assert.match(room, /id="meeting-participant-status"/);
+  assert.match(room, /<Avatar src=\{userAvatar\} name=\{user\?\.name \|\| "나"\} size="lg" tooltip=\{false\} \/>/);
+  assert.match(room, /<Heading level=\{3\} maxLines=\{1\}>\{user\?\.name \|\| "나"\}<\/Heading>/);
   assert.match(room, /position: "fixed"/);
   assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
   assert.match(room, /label=\{recording\.isRecording \? "기록 중지"/);
 
   assert.match(room, /data-room-invite-drawer/);
   assert.match(room, /as="aside"/);
+  assert.match(room, /height=\{desktop \? meetingControlHeight : "auto"\}/);
+  assert.match(room, /bottom: desktop \? "var\(--spacing-0\)" : "var\(--spacing-4\)"/);
+  assert.match(room, /data-desktop-meeting-controls width="100%" height=\{meetingControlHeight\}/);
   assert.match(room, /transform: inviteOpen \? "translateX\(0\)" : "translateX\(calc\(100% - var\(--spacing-10\) - var\(--spacing-4\)\)\)"/);
   assert.match(room, /icon=\{<Icon icon=\{inviteOpen \? "chevronRight" : "chevronLeft"\} \/>\}/);
   assert.match(room, />방 코드</);
