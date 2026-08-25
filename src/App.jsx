@@ -1497,8 +1497,10 @@ function SettingsPage({ context, recording }) {
                     {identification && (
                       <Stack gap={3}>
                         <Banner
-                          status={identification.identification.matched ? "success" : "warning"}
-                          title={identification.identification.matched
+                          status={identification.verification?.attemptRecorded && !identification.verification.recorded ? "warning" : identification.identification.matched ? "success" : "warning"}
+                          title={identification.verification?.attemptRecorded && !identification.verification.recorded
+                            ? "선택한 실제 화자와 판정이 일치하지 않았습니다."
+                            : identification.identification.matched
                             ? `${identification.identification.speaker.name}님으로 식별했습니다.`
                             : "이름을 확정하지 않았습니다."}
                           description={`${identification.identification.message} ${identification.verification?.message || ""}`.trim()}
@@ -1521,9 +1523,11 @@ function SettingsPage({ context, recording }) {
                 <List hasDividers header={<Heading level={3}>식별 가능한 사람</Heading>}>
                   {recording.speakers.length ? recording.speakers.map((speaker) => {
                     const quality = speaker.audioQuality;
-                    const verificationCount = speaker.crossSessionVerificationCount || 0;
+                    const verificationCount = speaker.verificationSuccessCount ?? speaker.crossSessionVerificationCount ?? 0;
+                    const verificationAttempts = Math.max(verificationCount, speaker.verificationAttemptCount || 0);
+                    const verificationColor = !verificationAttempts ? "yellow" : verificationCount === verificationAttempts ? "green" : verificationCount ? "yellow" : "red";
                     const metadata = `${speaker.enrollmentSessionCount || 1}회 등록 · ${(speaker.totalEnrollmentDuration || speaker.duration).toFixed(1)}초 · ${speaker.profileCount || 1}개 음성 표본 · ${speaker.enrollmentConsistency ? `내부 일관성 ${Math.round(speaker.enrollmentConsistency * 100)}%` : "기존 프로필"}`;
-                    const controls = <Stack direction="horizontal" gap={2} align="center"><Token label={verificationCount ? `별도 검증 ${verificationCount}회` : "별도 검증 필요"} color={verificationCount ? "green" : "yellow"} size="sm" />{quality && <Token label={`품질 ${quality.score}점`} color={quality.score >= 80 ? "green" : quality.score >= 60 ? "yellow" : "red"} size="sm" />}<Button label="샘플 추가" variant="secondary" size="sm" onClick={() => { setSampleTarget(speaker); setSampleFile(null); }} /><Button label={`${speaker.name} 삭제`} variant="ghost" size="sm" onClick={() => setDeleteTarget(speaker)} /></Stack>;
+                    const controls = <Stack direction="horizontal" gap={2} align="center"><Token label={verificationAttempts ? `별도 검증 ${verificationCount}/${verificationAttempts} 통과` : "별도 검증 필요"} color={verificationColor} size="sm" />{quality && <Token label={`품질 ${quality.score}점`} color={quality.score >= 80 ? "green" : quality.score >= 60 ? "yellow" : "red"} size="sm" />}<Button label="샘플 추가" variant="secondary" size="sm" onClick={() => { setSampleTarget(speaker); setSampleFile(null); }} /><Button label={`${speaker.name} 삭제`} variant="ghost" size="sm" onClick={() => setDeleteTarget(speaker)} /></Stack>;
                     const description = compact ? <Stack gap={2}><Text type="supporting">{metadata}</Text>{quality?.warnings?.[0] && <Text type="supporting">{quality.warnings[0]}</Text>}{controls}</Stack> : `${metadata}${quality?.warnings?.[0] ? ` · ${quality.warnings[0]}` : ""}`;
                     return <ListItem key={speaker.id} label={speaker.name} description={description} startContent={<Avatar name={speaker.name} size="sm" />} endContent={compact ? undefined : controls} />;
                   }) : <ListItem label="등록된 화자가 없습니다" description="위에서 참조 음성을 등록하면 실시간 이름 식별을 시작할 수 있습니다." startContent={<Icon icon="microphone" color="secondary" />} />}
