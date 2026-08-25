@@ -86,3 +86,26 @@ test("room closure is presented as terminal room state rather than a generic int
   assert.match(recordingSource, /회의 생성자가 회의를 종료했습니다/);
   assert.match(appSource, /isDisabled=\{recording\.roomClosed\}/);
 });
+
+test("active meeting generates intelligence once only after recording finalizes", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  assert.match(meetingPage, /const canGenerate = !readOnly && !recording\.isRecording && !recording\.isBusy/);
+  assert.match(meetingPage, /intelligenceRequestRef\.current\.has\(meetingId\)/);
+  assert.match(meetingPage, /await postJson\(`\/api\/meetings\/\$\{meetingId\}\/intelligence`, \{ force: false \}\)/);
+  assert.doesNotMatch(meetingPage, /force: true/);
+});
+
+test("room intelligence refreshes persisted segments before generation", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  const refresh = sourceBetween(recordingSource, "const refreshActiveMeeting", "const resetMeeting");
+  assert.match(meetingPage, /room\?\.id && recording\.refreshActiveMeeting/);
+  assert.match(meetingPage, /await recording\.refreshActiveMeeting\(\)/);
+  assert.match(refresh, /apiRequest\(`\/api\/meetings\/\$\{encodeURIComponent\(meetingId\)\}`\)/);
+  assert.match(refresh, /activeMeetingRef\.current\?\.id !== meetingId/);
+});
+
+test("read-only meetings only load cached intelligence and never generate it", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  assert.match(meetingPage, /apiRequest\(`\/api\/meetings\/\$\{meetingId\}\/intelligence`\)/);
+  assert.match(meetingPage, /const canGenerate = !readOnly/);
+});

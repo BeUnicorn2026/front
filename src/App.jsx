@@ -1704,6 +1704,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const [sentenceRewrites, setSentenceRewrites] = useState({});
   const [rewriteBusyTerm, setRewriteBusyTerm] = useState("");
   const automaticRecordingAttemptRef = useRef(false);
+  const intelligenceRequestRef = useRef(new Set());
   const displayedSegments = recording.segments;
   const meetingId = recording.activeMeeting?.id;
   const finalizedSegmentCount = displayedSegments.filter(({ pending }) => !pending).length;
@@ -1740,11 +1741,36 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
     setSentenceRewrites({});
     setRewriteBusyTerm("");
     if (!meetingId || !hasFinalizedTranscript) return () => { cancelled = true; };
-    apiRequest(`/api/meetings/${meetingId}/intelligence`)
-      .then(({ intelligence: cached }) => { if (!cancelled) setIntelligence(cached || null); })
-      .catch(() => { if (!cancelled) setIntelligence(null); });
+
+    const loadOrGenerateIntelligence = async () => {
+      try {
+        const { intelligence: cached } = await apiRequest(`/api/meetings/${meetingId}/intelligence`);
+        if (cancelled || meetingIdRef.current !== meetingId) return;
+        if (cached) {
+          setIntelligence(cached);
+          return;
+        }
+        const canGenerate = !readOnly && !recording.isRecording && !recording.isBusy;
+        if (!canGenerate || intelligenceRequestRef.current.has(meetingId)) return;
+        intelligenceRequestRef.current.add(meetingId);
+        const persistedMeeting = room?.id && recording.refreshActiveMeeting
+          ? await recording.refreshActiveMeeting()
+          : recording.activeMeeting;
+        if (cancelled || meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
+        if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
+        const result = await postJson(`/api/meetings/${meetingId}/intelligence`, { force: false });
+        if (cancelled || meetingIdRef.current !== meetingId) return;
+        setIntelligence(result.intelligence || null);
+        if (result.meeting) recording.updateMeeting(result.meeting);
+        if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+      } catch {
+        // Keep the live transcript usable when cached or generated intelligence is unavailable.
+      }
+    };
+
+    void loadOrGenerateIntelligence();
     return () => { cancelled = true; };
-  }, [hasFinalizedTranscript, meetingId, recording.activeMeeting?.updatedAt]);
+  }, [hasFinalizedTranscript, meetingId, onVocabularyRefresh, readOnly, recording.activeMeeting?.updatedAt, recording.isBusy, recording.isRecording, recording.refreshActiveMeeting, recording.updateMeeting, room?.id]);
 
   const rewriteWordInSentence = async (segment, segmentIndex, term) => {
     if (readOnly || !meetingId || !intelligence || segment?.pending || rewriteBusyTerm) return;
