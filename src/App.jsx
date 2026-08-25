@@ -862,7 +862,8 @@ function RecordingFooter({ recording, compact }) {
               placeholder="파일에서 전사"
               isLabelHidden
               isLoading={recording.isBusy && !recording.isRecording}
-              isDisabled={recording.isRecording}
+              isDisabled={recording.isRecording || !recording.services.openai}
+              disabledMessage={recording.isRecording ? "기록 중에는 파일을 올릴 수 없습니다." : "서버에 OpenAI 전사 키가 설정되어 있지 않습니다."}
               width={compact ? "100%" : 220}
             />}
             <Button

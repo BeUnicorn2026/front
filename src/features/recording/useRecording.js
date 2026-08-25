@@ -136,6 +136,7 @@ export function useRecording() {
   const interruptedRef = useRef(false);
   const socketDisconnectedRef = useRef(false);
   const finalizationStartedRef = useRef(false);
+  const uploadIdsRef = useRef(new Map());
 
   const setNotice = useCallback((message) => {
     noticeModeRef.current = modeRef.current;
@@ -390,10 +391,20 @@ export function useRecording() {
   }, []);
 
   const importAudio = useCallback(async (file) => {
+    const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+    let importId = uploadIdsRef.current.get(fileKey);
+    if (!importId) {
+      importId = crypto.randomUUID();
+      uploadIdsRef.current.set(fileKey, importId);
+      if (uploadIdsRef.current.size > 20) uploadIdsRef.current.delete(uploadIdsRef.current.keys().next().value);
+    }
     const form = new FormData();
     form.append("audio", file, file.name);
     form.append("language", languageRef.current);
-    return apiRequest("/api/meetings/import", { method: "POST", body: form });
+    form.append("importId", importId);
+    const result = await apiRequest("/api/meetings/import", { method: "POST", body: form });
+    uploadIdsRef.current.delete(fileKey);
+    return result;
   }, []);
 
   const finishRecording = useCallback(() => {
