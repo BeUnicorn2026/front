@@ -1521,6 +1521,24 @@ function SettingsPage({ context, recording }) {
     }
   };
 
+  const promoteIdentificationSample = async () => {
+    if (!identificationFile || !expectedSpeakerId || !identification?.verification?.recorded) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      const speaker = await recording.addSpeakerSample(expectedSpeakerId, identificationFile);
+      setIdentification(null);
+      setIdentificationFile(null);
+      setExpectedSpeakerId("");
+      setIndependentRecording(false);
+      setFeedback(`${speaker.name}의 검증 음성을 추가 표본으로 반영했습니다.`);
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <Layout
@@ -1528,7 +1546,7 @@ function SettingsPage({ context, recording }) {
         content={(
         <LayoutContent padding={compact ? 3 : 4}>
           <Stack gap={6}>
-            {feedback && <Feedback message={feedback} status={feedback.includes("등록했습니다") || feedback.includes("복사") ? "success" : "info"} onDismiss={() => setFeedback("")} />}
+            {feedback && <Feedback message={feedback} status={feedback.includes("등록했습니다") || feedback.includes("반영했습니다") || feedback.includes("복사") ? "success" : "info"} onDismiss={() => setFeedback("")} />}
             <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
               <Stack gap={6} width="100%">
             <Section dividers={["bottom"]} paddingInline={0}>
@@ -1634,10 +1652,24 @@ function SettingsPage({ context, recording }) {
                             2순위와 차이 {Math.round(identification.identification.scoreGap * 100)}%p · 필요한 차이 {Math.round(identification.identification.requiredMargin * 100)}%p · 입력 품질 {identification.quality.score}점
                           </Text>
                         )}
+                        {identification.verification?.attemptRecorded && identification.verification.expectedSpeakerScore != null && (
+                          <Text type="supporting">선택한 실제 화자와의 유사도 {Math.round(identification.verification.expectedSpeakerScore * 100)}%</Text>
+                        )}
                         {identification.verification?.reason === "enrollment_audio" && identification.verification.enrollmentAudioSimilarity != null && (
                           <Text type="supporting">등록 음성과 내용 일치도 {Math.round(identification.verification.enrollmentAudioSimilarity * 1000) / 10}% · 별도 녹음으로 인정하려면 재인코딩이나 편집본이 아닌 다른 시점의 녹음이 필요합니다.</Text>
                         )}
                         <Text type="supporting">판정이 불안정하면 같은 사람의 다른 날·거리·마이크 샘플을 추가한 뒤 다시 시험해 보세요.</Text>
+                        {identification.verification?.recorded && expectedSpeakerId && identificationFile && (
+                          <Stack direction="horizontal" justify="end">
+                            <Button
+                              label="이 검증 음성을 표본에 추가"
+                              variant="secondary"
+                              size="sm"
+                              onClick={promoteIdentificationSample}
+                              isLoading={busy}
+                            />
+                          </Stack>
+                        )}
                       </Stack>
                     )}
                   </Stack>
