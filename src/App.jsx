@@ -434,7 +434,7 @@ function VocabularyOnboarding({ context, onChange }) {
   );
 }
 
-function PageHeader({ title, endContent }) {
+function PageHeader({ title, description, endContent }) {
   const { compact } = useViewport();
   const visibleTitle = compact && title.length > 18 ? `${title.slice(0, 18)}…` : title;
   return (
@@ -445,6 +445,7 @@ function PageHeader({ title, endContent }) {
         startContent={(
           <Stack gap={0.5}>
             <Heading level={compact ? 2 : 1} maxLines={1}>{visibleTitle}</Heading>
+            {!compact && description && <Text type="supporting" color="secondary" maxLines={1}>{description}</Text>}
           </Stack>
         )}
         endContent={endContent}
