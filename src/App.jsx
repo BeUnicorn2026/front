@@ -1359,7 +1359,7 @@ function meetingDate(value) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
+function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recording }) {
   const { compact, reducedMotion } = useViewport();
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountTab, setAccountTab] = useState("bio");
@@ -1444,7 +1444,8 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
           <Text type="supporting" color="secondary">{context.organization.name} 워크스페이스</Text>
         </Stack>
       </Card>
-      <Stack direction="horizontal" gap={2}>
+      <Stack direction={compact ? "vertical" : "horizontal"} gap={2}>
+        <Button label="플랜 및 결제" variant="primary" onClick={() => onNavigate("billing")} />
         <Button label="로그아웃" variant="destructive" onClick={onLogout} />
         <Button label="돌아가기" variant="ghost" onClick={() => setAccountOpen(false)} />
       </Stack>
@@ -2252,7 +2253,7 @@ function Workspace({ context, onContextChange, onLogout }) {
     recording.openMeeting(meeting);
     navigateTo("record");
   };
-  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onLogout={onLogout} />;
+  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;

@@ -15,6 +15,7 @@ test("home copies the supplied expanding account, history, and room-code dock hi
   assert.match(dashboard, /value="bio" label="자기소개"/);
   assert.match(dashboard, /value="settings" label="세팅"/);
   assert.match(dashboard, /value="account" label="계정"/);
+  assert.match(dashboard, /label="플랜 및 결제" variant="primary" onClick=\{\(\) => onNavigate\("billing"\)\}/);
   assert.match(dashboard, /event\.clientY > bounds\.top \+ bounds\.height \* 0\.7/);
   assert.match(dashboard, /if \(event\.key === "Enter" && ready\) onStart\(code\.join\(""\)\)/);
   assert.match(dashboard, /if \(!focusedCode\) setDockUp\(false\)/);
