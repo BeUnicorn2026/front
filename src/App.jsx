@@ -7,6 +7,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Center } from "@astryxdesign/core/Center";
 import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { FileInput } from "@astryxdesign/core/FileInput";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
@@ -1328,54 +1329,105 @@ function meetingDate(value) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-function DashboardPage({ context, onStart, onOpen, recording, vocabularyTerms }) {
-  const { compact, desktop } = useViewport();
-  const recentMeetings = recording.meetings.slice(0, 5);
+function DashboardPage({ context, onStart, onOpen, onNavigate, recording, vocabularyTerms }) {
+  const { compact } = useViewport();
+  const recentMeetings = recording.meetings.slice(0, 6);
   const unfamiliarTerms = vocabularyTerms.filter(({ isKnown }) => !isKnown);
-  const newTerms = unfamiliarTerms.filter(({ knowledge }) => !knowledge?.evidenceCount).slice(0, 3);
+  const roles = context.user.vocabulary?.roles || [];
+  const verifiedSpeakers = recording.speakers.filter(({ crossSessionVerificationCount }) => crossSessionVerificationCount).length;
   return (
     <Layout
-      header={<PageHeader title="회의" description={`${context.organization.name} · 저장된 회의 ${recording.meetings.length}건`} endContent={<Button variant="primary" label="새 회의 녹음" icon={<Icon icon="microphone" />} onClick={onStart} />} />}
+      header={<PageHeader title="홈" description={context.organization.name} />}
       content={(
-        <LayoutContent padding={compact ? 3 : 6}>
-          <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
-            <Stack gap={4} width="100%">
-              <Stack gap={1}>
-                <Heading level={2}>최근 회의</Heading>
-                <Text type="supporting">실제 녹음과 파일 전사로 저장된 문서입니다.</Text>
-              </Stack>
+        <LayoutContent padding={compact ? 3 : 5}>
+          <Center width="100%">
+            <Stack gap={5} width="100%" maxWidth={720}>
               <Card padding={0}>
-              <List hasDividers>
-                {recentMeetings.length ? recentMeetings.map((meeting) => {
-                  const status = meetingStatusPresentation(meeting.status);
-                  return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Stack direction="horizontal" gap={1}><Token label={meeting.mode === "stt" ? "STT" : `${meeting.speakerCount}명`} color={meeting.mode === "stt" ? "teal" : "default"} size="sm" /><Token label={status.label} color={status.color} size="sm" /></Stack>} onClick={() => onOpen(meeting)} />;
-                }) : <ListItem label="아직 저장된 회의가 없습니다" description="새 회의를 시작하면 실제 전사 문서가 여기에 저장됩니다." startContent={<Icon icon="microphone" color="secondary" />} />}
-              </List>
+                <Collapsible
+                  defaultIsOpen={false}
+                  trigger={(
+                    <Stack direction="horizontal" gap={3} align="center" width="100%">
+                      <Avatar name={context.user.name} size="lg" />
+                      <Stack gap={0.5} width="100%">
+                        <Heading level={3}>{context.user.name}</Heading>
+                        <Text type="supporting" color="secondary" maxLines={1}>
+                          {roles.length ? roles.join(" · ") : context.user.email}
+                        </Text>
+                      </Stack>
+                      {!compact && <Text type="supporting" color="secondary">내 맞춤 설정</Text>}
+                    </Stack>
+                  )}
+                >
+                  <Section padding={3}>
+                    <List hasDividers density="compact">
+                      <ListItem
+                        label="개인화된 용어 설명"
+                        description={unfamiliarTerms.length ? `설명이 필요한 용어 ${unfamiliarTerms.length}개` : "현재 추가 설명이 필요한 용어가 없습니다."}
+                        startContent={<Icon icon="info" color="accent" />}
+                        endContent={<Icon icon="chevronRight" color="secondary" />}
+                        onClick={() => onNavigate("dictionary")}
+                      />
+                      <ListItem
+                        label="등록된 목소리"
+                        description={`${recording.speakers.length}명 등록 · ${verifiedSpeakers}명 반복 검증`}
+                        startContent={<Icon icon="microphone" color="accent" />}
+                        endContent={<Icon icon="chevronRight" color="secondary" />}
+                        onClick={() => onNavigate("settings")}
+                      />
+                      <ListItem
+                        label="계정과 조직 설정"
+                        description={context.user.email}
+                        startContent={<Icon icon="wrench" color="secondary" />}
+                        endContent={<Icon icon="chevronRight" color="secondary" />}
+                        onClick={() => onNavigate("settings")}
+                      />
+                    </List>
+                  </Section>
+                </Collapsible>
               </Card>
-            </Stack>
-            <Stack gap={4} width={desktop ? "var(--layout-dashboard-panel-width)" : "100%"} style={{ flex: "none" }}>
-              <Card padding={4}>
-                <Stack gap={3}>
-                  <Stack direction="horizontal" justify="between" align="center"><Heading level={3}>이번 주 새 용어</Heading><Text type="supporting">{newTerms.length}개</Text></Stack>
-                  <List hasDividers density="compact">
-                    {newTerms.length ? newTerms.map((term) => <ListItem key={term.conceptId || term.term} label={term.term} description={term.definition || `${term.occurrences || 1}회 언급`} startContent={<Token label="새 용어" color="yellow" size="sm" />} />) : <ListItem label="새 용어가 없습니다" description="회의를 분석하면 여기에 표시됩니다." />}
-                  </List>
-                </Stack>
-              </Card>
-              <Card padding={4}>
-                <Stack gap={3}>
-                  <Heading level={3}>내가 모른다고 표시한 단어</Heading>
-                  <Stack direction="horizontal" gap={2} wrap="wrap">
-                    {unfamiliarTerms.length ? unfamiliarTerms.slice(0, 8).map((term) => <Token key={term.conceptId || term.term} label={term.term} color="red" />) : <Text type="supporting">아직 직접 표시한 용어가 없습니다.</Text>}
+
+              <Stack gap={2}>
+                <Stack direction="horizontal" justify="between" align="end">
+                  <Stack gap={0.5}>
+                    <Heading level={2}>참여한 회의</Heading>
+                    <Text type="supporting" color="secondary">최근 기록부터 바로 이어서 확인하세요.</Text>
                   </Stack>
-                  <Text type="supporting">다음 회의에서 같은 용어가 나오면 먼저 풀어드립니다.</Text>
+                  <Text type="supporting" color="secondary">{recording.meetings.length}건</Text>
+                </Stack>
+                <List hasDividers density="spacious">
+                  {recentMeetings.length ? recentMeetings.map((meeting) => {
+                    const status = meetingStatusPresentation(meeting.status);
+                    return (
+                      <ListItem
+                        key={meeting.id}
+                        label={meeting.title}
+                        description={`${meetingDate(meeting.startedAt)} · ${meeting.segmentCount}개 발화`}
+                        startContent={<Icon icon="calendar" color="accent" />}
+                        endContent={<Token label={status.label} color={status.color} size="sm" />}
+                        onClick={() => onOpen(meeting)}
+                      />
+                    );
+                  }) : (
+                    <ListItem
+                      label="아직 참여한 회의가 없습니다"
+                      description="아래 버튼으로 첫 실시간 기록을 시작하세요."
+                      startContent={<Icon icon="microphone" color="secondary" />}
+                    />
+                  )}
+                </List>
+              </Stack>
+
+              <Card padding={compact ? 3 : 4} variant="muted">
+                <Stack direction={compact ? "vertical" : "horizontal"} gap={3} align={compact ? "stretch" : "center"} justify="between">
+                  <Stack gap={0.5}>
+                    <Heading level={3}>새 회의를 시작할까요?</Heading>
+                    <Text type="supporting" color="secondary">말하는 동안 화자를 구분하고 문서를 만듭니다.</Text>
+                  </Stack>
+                  <Button variant="primary" size="lg" label="실시간 기록 시작" icon={<Icon icon="microphone" />} onClick={onStart} />
                 </Stack>
               </Card>
-              <Card padding={4} variant="muted">
-                <Stack gap={2}><Text weight="semibold">음성 식별 준비</Text><Text type="supporting">등록 화자 {recording.speakers.length}명 · 별도 검증 {recording.speakers.filter(({ crossSessionVerificationCount }) => crossSessionVerificationCount).length}명</Text></Stack>
-              </Card>
             </Stack>
-          </Stack>
+          </Center>
         </LayoutContent>
       )}
     />
@@ -1998,7 +2050,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   let content;
   const startNewMeeting = () => { recording.resetMeeting(); navigateTo("record"); };
   const openMeeting = (meeting) => { recording.openMeeting(meeting); navigateTo("record"); };
-  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
+  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} vocabularyTerms={vocabularyTerms} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
