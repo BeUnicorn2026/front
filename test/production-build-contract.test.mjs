@@ -12,6 +12,9 @@ test("Cloudflare build publishes verifiable commit metadata and runs the bundle 
   assert.match(configuration, /CF_PAGES_COMMIT_SHA/);
   assert.match(configuration, /deployment\.json/);
   assert.match(packageManifest.scripts.build, /verify-production-build\.mjs/);
+  const buildVerifier = await readFile(new URL("../scripts/verify-production-build.mjs", import.meta.url), "utf8");
+  assert.match(buildVerifier, /react-vendor-/);
+  assert.match(buildVerifier, /React 런타임을 명시적으로 import/);
   assert.doesNotMatch(html, /(?:src|href)="https?:\/\//);
   assert.match(headers, /\/index\.html[\s\S]*no-cache/);
   assert.match(headers, /\/assets\/\*[\s\S]*immutable/);

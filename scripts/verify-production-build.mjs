@@ -10,6 +10,16 @@ const assetPaths = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((
 if (!assetPaths.length) throw new Error("프로덕션 HTML이 빌드 자산을 참조하지 않습니다.");
 await Promise.all(assetPaths.map((assetPath) => access(path.join(outputDirectory, assetPath))));
 
+const entryScriptMatch = html.match(/<script\b[^>]*\btype="module"[^>]*\bsrc="(\/assets\/[^"]+\.js)"/);
+if (!entryScriptMatch) throw new Error("프로덕션 HTML에 module 엔트리 스크립트가 없습니다.");
+const entryScriptPath = entryScriptMatch[1];
+const entrySource = await readFile(path.join(outputDirectory, entryScriptPath), "utf8");
+const reactVendorImport = entrySource.match(/from["'](\.\/react-vendor-[^"']+\.js)["']/);
+if (!reactVendorImport) {
+  throw new Error(`${path.basename(entryScriptPath)}: 엔트리 청크가 React 런타임을 명시적으로 import하지 않습니다.`);
+}
+await access(path.resolve(path.dirname(path.join(outputDirectory, entryScriptPath)), reactVendorImport[1]));
+
 const metadata = JSON.parse(await readFile(path.join(outputDirectory, "deployment.json"), "utf8"));
 const expectedCommit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || "local");
 if (metadata.commit !== expectedCommit) throw new Error("배포 메타데이터의 커밋이 빌드 환경과 일치하지 않습니다.");
@@ -35,4 +45,4 @@ for (const file of javascriptFiles) {
   }
 }
 
-console.log(`Verified production build for ${expectedCommit.slice(0, 12)} (${assetPaths.length} linked assets, ${javascriptFiles.length} scripts).`);
+console.log(`Verified production build for ${expectedCommit.slice(0, 12)} (${assetPaths.length} linked assets, ${javascriptFiles.length} scripts, explicit React runtime).`);
