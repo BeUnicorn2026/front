@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
-  liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
+  liveRecordingStatusAfterEvent, liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
   servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
@@ -114,6 +114,14 @@ test("tracks speaker model preparation and readiness from live events", () => {
   const ready = servicesAfterLiveEvent(loading, { type: "ready", mode: "speaker" });
   assert.equal(ready.speakerModelState, "ready");
   assert.strictEqual(servicesAfterLiveEvent(ready, { type: "transcript" }), ready);
+});
+
+test("turns provider voice activity into clear live recording states", () => {
+  assert.equal(liveRecordingStatusAfterEvent({ type: "ready", mode: "speaker" }), "녹음 중 · 화자 식별 연결됨");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "speaker"), "말하는 중 · 화자와 문장 분석 중");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "stt"), "말하는 중 · 실시간 문장 분석 중");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "utterance_end" }), "듣는 중 · 다음 발화 대기");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "transcript" }), null);
 });
 
 test("bounds autosave retries and preserves interrupted completion state", () => {

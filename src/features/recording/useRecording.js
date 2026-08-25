@@ -149,6 +149,18 @@ export function servicesAfterLiveEvent(services, event) {
   return services;
 }
 
+export function liveRecordingStatusAfterEvent(event, mode = "stt") {
+  if (event?.type === "ready") {
+    return event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨";
+  }
+  if (event?.type === "preparing") return event.message || "화자 인식 모델 준비 중";
+  if (event?.type === "speech_started") {
+    return mode === "speaker" ? "말하는 중 · 화자와 문장 분석 중" : "말하는 중 · 실시간 문장 분석 중";
+  }
+  if (event?.type === "utterance_end") return "듣는 중 · 다음 발화 대기";
+  return null;
+}
+
 export function autosaveRetryDelay(failureCount) {
   const failures = Math.max(1, Math.floor(Number(failureCount) || 1));
   return Math.min(8_000, 1_000 * (2 ** (failures - 1)));
@@ -434,12 +446,9 @@ export function useRecording() {
       setNotice(event.message);
       return;
     }
-    if (event.type === "ready") {
-      setStatus(event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨");
-      return;
-    }
-    if (event.type === "preparing") {
-      setStatus(event.message || "화자 인식 모델 준비 중");
+    const liveStatus = liveRecordingStatusAfterEvent(event, modeRef.current);
+    if (liveStatus) {
+      setStatus(liveStatus);
       return;
     }
     if (event.type === "finalized") {
