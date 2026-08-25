@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
-  correctSpeakerCluster, correctTranscriptSegment, mergeSegments,
+  correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
@@ -123,6 +123,30 @@ test("bounds autosave retries and preserves interrupted completion state", () =>
   assert.match(recordingStartErrorMessage({ name: "NotAllowedError" }), /마이크 권한/);
   assert.match(recordingStartErrorMessage({ name: "NotFoundError" }), /마이크/);
   assert.equal(recordingStartErrorMessage(new Error("서버 연결 실패")), "서버 연결 실패");
+});
+
+test("serializes autosave and completion writes even when an earlier request is slow", async () => {
+  const queue = createMeetingSaveQueue();
+  let releaseAutosave;
+  const order = [];
+  const autosave = queue.enqueue(async () => {
+    order.push("autosave-start");
+    await new Promise((resolve) => { releaseAutosave = resolve; });
+    order.push("autosave-end");
+  });
+  const completion = queue.enqueue(async () => { order.push("completion"); });
+
+  while (!releaseAutosave) await Promise.resolve();
+  assert.deepEqual(order, ["autosave-start"]);
+  releaseAutosave();
+  await Promise.all([autosave, completion]);
+  assert.deepEqual(order, ["autosave-start", "autosave-end", "completion"]);
+});
+
+test("continues the meeting save queue after a failed write", async () => {
+  const queue = createMeetingSaveQueue();
+  await assert.rejects(queue.enqueue(async () => { throw new Error("offline"); }), /offline/);
+  assert.equal(await queue.enqueue(async () => "saved"), "saved");
 });
 
 test("uses the selected microphone without dropping voice processing constraints", () => {

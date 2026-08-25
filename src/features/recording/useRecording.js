@@ -141,6 +141,17 @@ export function autosaveRetryDelay(failureCount) {
   return Math.min(8_000, 1_000 * (2 ** (failures - 1)));
 }
 
+export function createMeetingSaveQueue() {
+  let tail = Promise.resolve();
+  return {
+    enqueue(operation) {
+      const queued = tail.catch(() => undefined).then(operation);
+      tail = queued;
+      return queued;
+    }
+  };
+}
+
 export function recordingCompletionStatus(interrupted) {
   return interrupted ? "interrupted" : "completed";
 }
@@ -213,6 +224,8 @@ export function useRecording() {
   const socketDisconnectedRef = useRef(false);
   const finalizationStartedRef = useRef(false);
   const uploadIdsRef = useRef(new Map());
+  const meetingSaveQueueRef = useRef(null);
+  if (!meetingSaveQueueRef.current) meetingSaveQueueRef.current = createMeetingSaveQueue();
 
   const setNotice = useCallback((message) => {
     noticeModeRef.current = modeRef.current;
@@ -308,9 +321,11 @@ export function useRecording() {
   const saveActiveMeeting = useCallback(async (changes) => {
     const meeting = activeMeetingRef.current;
     if (!meeting) return null;
-    const result = await patchJson(`/api/meetings/${meeting.id}`, changes);
-    upsertMeeting(result.meeting);
-    return result.meeting;
+    return meetingSaveQueueRef.current.enqueue(async () => {
+      const result = await patchJson(`/api/meetings/${meeting.id}`, changes);
+      upsertMeeting(result.meeting);
+      return result.meeting;
+    });
   }, [upsertMeeting]);
 
   const scheduleAutosave = useCallback((nextSegments) => {
