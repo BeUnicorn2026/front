@@ -1616,109 +1616,106 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   };
 
   const participantControl = (
-    <Stack data-meeting-participant-control align="center" style={{ position: "relative", zIndex: 3 }}>
+    <Stack
+      data-meeting-participant-control
+      align="center"
+      width={participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)"}
+      height="calc(var(--spacing-10) + var(--spacing-4))"
+      style={{ position: "relative", zIndex: 3, transition }}
+    >
       <Card
         padding={0}
         style={{
-          width: participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)",
-          borderRadius: "var(--radius-full)",
-          boxShadow: "var(--shadow-med)",
-          transition
-        }}
-      >
-        <Stack direction="horizontal" align="center" gap={2} padding={2}>
-          <Stack
-            as="button"
-            type="button"
-            direction="horizontal"
-            align="center"
-            gap={3}
-            width="100%"
-            paddingInline={1}
-            onClick={() => setParticipantOpen((open) => !open)}
-            aria-expanded={participantOpen}
-            aria-controls="meeting-participant-status"
-            style={{ minWidth: 0, border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "start" }}
-          >
-            <Avatar name={user?.name || "나"} size="lg" />
-            <Stack gap={0.5} width="100%" style={{ minWidth: 0 }}>
-              <Text weight="semibold" maxLines={1}>{user?.name || "나"}</Text>
-              <Text type="supporting" color="secondary" maxLines={1}>{readOnly ? "회의 기록 열람 중" : userRole}</Text>
-            </Stack>
-            <Stack style={{ transform: participantOpen ? "rotate(180deg)" : "rotate(0deg)", transition }}>
-              <Icon icon="chevronDown" color="secondary" />
-            </Stack>
-          </Stack>
-          {readOnly ? (
-            <Token label="열람" color="teal" size="sm" />
-          ) : (
-            <IconButton
-              label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
-              tooltip={recording.isRecording ? "기록 중지" : "기록 시작"}
-              icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
-              variant={recording.isRecording ? "destructive" : "primary"}
-              size="lg"
-              onClick={toggleRecording}
-              isLoading={recording.isBusy}
-            />
-          )}
-        </Stack>
-      </Card>
-      <Stack
-        id="meeting-participant-status"
-        role="dialog"
-        aria-label="내 회의 상태"
-        aria-hidden={!participantOpen}
-        width="calc(var(--spacing-10) * 9)"
-        padding={5}
-        gap={4}
-        style={{
-          position: "fixed",
+          position: "absolute",
           insetInlineStart: "50%",
-          bottom: "calc(var(--spacing-10) * 3)",
-          zIndex: 3,
-          border: "var(--border-width) solid var(--color-border)",
-          borderRadius: "var(--radius-container)",
-          background: "var(--color-background-surface)",
-          boxShadow: "var(--shadow-high)",
-          opacity: participantOpen ? 1 : 0,
-          transform: participantOpen ? "translate(-50%, 0) scale(1)" : "translate(-50%, var(--spacing-3)) scale(0.97)",
-          pointerEvents: participantOpen ? "auto" : "none",
+          bottom: "var(--spacing-0)",
+          width: "100%",
+          height: participantOpen ? "calc(var(--spacing-10) * 7)" : "calc(var(--spacing-10) + var(--spacing-4))",
+          overflow: "hidden",
+          borderRadius: participantOpen ? "var(--radius-container)" : "var(--radius-full)",
+          boxShadow: participantOpen ? "var(--shadow-high)" : "var(--shadow-med)",
+          transform: "translateX(-50%)",
           transition
         }}
       >
-        <Stack direction="horizontal" justify="between" align="center" gap={4}>
-          <Stack direction="horizontal" align="center" gap={3} style={{ minWidth: 0 }}>
-            <Avatar src={userAvatar} name={user?.name || "나"} size="lg" tooltip={false} />
-            <Stack gap={0.5} style={{ minWidth: 0 }}>
-              <Heading level={3} maxLines={1}>{user?.name || "나"}</Heading>
-              <Text type="supporting" color="secondary" maxLines={1}>{userRole}</Text>
-            </Stack>
-          </Stack>
-          <StatusDot
-            variant={readOnly ? "neutral" : recording.isRecording ? "error" : "success"}
-            label={readOnly ? "기록 열람 중" : recording.isRecording ? "녹음 중" : "입장 완료"}
-            isPulsing={!readOnly && recording.isRecording}
-          />
-        </Stack>
-        <Section variant="muted" padding={3}>
-          <Stack gap={3}>
-            <Stack direction="horizontal" justify="between" gap={3}>
-              <Text type="supporting" weight="semibold">표시 이름</Text>
-              <Text type="supporting">{user?.name || "나"}</Text>
-            </Stack>
-            {!readOnly && (
-              <Stack gap={2}>
-                <Stack direction="horizontal" justify="between" gap={3}>
-                  <Text type="supporting" weight="semibold">입력 마이크</Text>
-                  <Text type="supporting" color="secondary" maxLines={1}>{microphoneLabel}</Text>
-                </Stack>
-                <ProgressBar label="마이크 입력 상태" value={recording.audioLevel} isLabelHidden />
+        <Stack height="100%">
+          <Stack direction="horizontal" align="center" gap={2} padding={2} style={{ flex: "none" }}>
+            <Stack
+              as="button"
+              type="button"
+              direction="horizontal"
+              align="center"
+              gap={3}
+              width="100%"
+              paddingInline={1}
+              onClick={() => setParticipantOpen((open) => !open)}
+              aria-expanded={participantOpen}
+              aria-controls="meeting-participant-status"
+              style={{ minWidth: 0, border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "start" }}
+            >
+              <Avatar src={userAvatar} name={user?.name || "나"} size="lg" tooltip={false} />
+              <Stack gap={0.5} width="100%" style={{ minWidth: 0 }}>
+                <Heading level={3} maxLines={1}>{user?.name || "나"}</Heading>
+                <Text type="supporting" color="secondary" maxLines={1}>{readOnly ? "회의 기록 열람 중" : userRole}</Text>
               </Stack>
+              <Stack style={{ transform: participantOpen ? "rotate(180deg)" : "rotate(0deg)", transition }}>
+                <Icon icon="chevronDown" color="secondary" />
+              </Stack>
+            </Stack>
+            {readOnly ? (
+              <Token label="열람" color="teal" size="sm" />
+            ) : (
+              <IconButton
+                label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                tooltip={recording.isRecording ? "기록 중지" : "기록 시작"}
+                icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
+                variant={recording.isRecording ? "destructive" : "primary"}
+                size="lg"
+                onClick={toggleRecording}
+                isLoading={recording.isBusy}
+              />
             )}
           </Stack>
-        </Section>
-      </Stack>
+          <Stack
+            id="meeting-participant-status"
+            role="region"
+            aria-label="내 회의 상태"
+            aria-hidden={!participantOpen}
+            paddingInline={5}
+            paddingBlock={4}
+            gap={4}
+            style={{
+              opacity: participantOpen ? 1 : 0,
+              transform: participantOpen ? "translateY(0)" : "translateY(var(--spacing-4))",
+              pointerEvents: participantOpen ? "auto" : "none",
+              transition
+            }}
+          >
+            <StatusDot
+              variant={readOnly ? "neutral" : recording.isRecording ? "error" : "success"}
+              label={readOnly ? "기록 열람 중" : recording.isRecording ? "녹음 중" : "입장 완료"}
+              isPulsing={!readOnly && recording.isRecording}
+            />
+            <Section variant="muted" padding={3}>
+              <Stack gap={3}>
+                <Stack direction="horizontal" justify="between" gap={3}>
+                  <Text type="supporting" weight="semibold">표시 이름</Text>
+                  <Text type="supporting">{user?.name || "나"}</Text>
+                </Stack>
+                {!readOnly && (
+                  <Stack gap={2}>
+                    <Stack direction="horizontal" justify="between" gap={3}>
+                      <Text type="supporting" weight="semibold">입력 마이크</Text>
+                      <Text type="supporting" color="secondary" maxLines={1}>{microphoneLabel}</Text>
+                    </Stack>
+                    <ProgressBar label="마이크 입력 상태" value={recording.audioLevel} isLabelHidden />
+                  </Stack>
+                )}
+              </Stack>
+            </Section>
+          </Stack>
+        </Stack>
+      </Card>
     </Stack>
   );
 

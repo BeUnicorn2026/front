@@ -17,12 +17,16 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /data-desktop-meeting-controls/);
   assert.match(room, /data-meeting-participant-control/);
   assert.match(room, /aria-controls="meeting-participant-status"/);
-  assert.match(room, /width: participantOpen \? "calc\(var\(--spacing-10\) \* 9\)" : "calc\(var\(--spacing-10\) \* 7\)"/);
+  assert.match(room, /width=\{participantOpen \? "calc\(var\(--spacing-10\) \* 9\)" : "calc\(var\(--spacing-10\) \* 7\)"\}/);
   assert.match(room, /id="meeting-participant-status"/);
   assert.match(room, /<Avatar src=\{userAvatar\} name=\{user\?\.name \|\| "나"\} size="lg" tooltip=\{false\} \/>/);
   assert.match(room, /<Heading level=\{3\} maxLines=\{1\}>\{user\?\.name \|\| "나"\}<\/Heading>/);
-  assert.match(room, /position: "fixed"/);
+  assert.match(room, /height: participantOpen \? "calc\(var\(--spacing-10\) \* 7\)" : "calc\(var\(--spacing-10\) \+ var\(--spacing-4\)\)"/);
+  assert.match(room, /position: "absolute"/);
+  assert.match(room, /bottom: "var\(--spacing-0\)"/);
+  assert.match(room, /overflow: "hidden"/);
   assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
+  assert.doesNotMatch(room, /role="dialog"/);
   assert.match(room, /label=\{recording\.isRecording \? "기록 중지"/);
 
   assert.match(room, /data-room-invite-drawer/);
