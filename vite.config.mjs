@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
     proxy: {
       "/api": {
-        target: process.env.VOICE_PARTITION_API_ORIGIN || "http://127.0.0.1:3001",
+        target: process.env.VOICE_PARTITION_API_ORIGIN || "http://127.0.0.1:7070",
         changeOrigin: false,
         ws: true
       }

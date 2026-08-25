@@ -1,5 +1,6 @@
 let csrfToken = "";
-const configuredApiOrigin = String(import.meta.env?.VITE_API_ORIGIN || "").replace(/\/$/, "");
+const defaultApiOrigin = import.meta.env?.PROD ? "https://api.ssu-on.com" : "";
+const configuredApiOrigin = String(import.meta.env?.VITE_API_ORIGIN || defaultApiOrigin).replace(/\/$/, "");
 
 export function apiUrl(path) {
   return configuredApiOrigin ? new URL(path, `${configuredApiOrigin}/`).toString() : path;

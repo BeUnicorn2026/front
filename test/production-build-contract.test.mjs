@@ -22,3 +22,12 @@ test("Cloudflare build publishes verifiable commit metadata and runs the bundle 
   assert.match(headers, /\/record[\s\S]*no-cache/);
   assert.match(redirects, /^\/\* \/index\.html 200/m);
 });
+
+test("production uses the public API while local development proxies port 7070", async () => {
+  const [apiSource, configuration] = await Promise.all([
+    readFile(new URL("../src/api.js", import.meta.url), "utf8"),
+    readFile(new URL("../vite.config.mjs", import.meta.url), "utf8")
+  ]);
+  assert.match(apiSource, /import\.meta\.env\?\.PROD\s*\?\s*["']https:\/\/api\.ssu-on\.com["']/);
+  assert.match(configuration, /http:\/\/127\.0\.0\.1:7070/);
+});
