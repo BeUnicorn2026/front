@@ -1013,6 +1013,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
         force: Boolean(intelligence)
       });
       setIntelligence(result.intelligence);
+      if (result.meeting) recording.updateMeeting(result.meeting);
       await onVocabularyRefresh();
       setView("outline");
       setIntelligenceNotice(result.cached ? "저장된 분석을 불러왔습니다." : "현재 전사를 기준으로 구조를 정리했습니다.");

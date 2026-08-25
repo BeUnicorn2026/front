@@ -843,7 +843,7 @@ export function useRecording() {
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
     audioInputs, selectedAudioInputId, setSelectedAudioInputId,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }
