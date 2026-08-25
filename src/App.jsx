@@ -35,6 +35,7 @@ import {
   ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
+import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { useRecording } from "./features/recording/useRecording";
 
 function useViewport() {
@@ -1745,7 +1746,7 @@ function SettingsPage({ context, recording }) {
 
 function Workspace({ context, onContextChange, onLogout }) {
   const { compact, reducedMotion } = useViewport();
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState(() => workspacePageFromPath(window.location.pathname));
   const [vocabularyTerms, setVocabularyTerms] = useState([]);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const navigationInteractionRef = useRef({ hovered: false, focused: false, pointerPress: false });
@@ -1774,6 +1775,18 @@ function Workspace({ context, onContextChange, onLogout }) {
   }, [context.organization.id, (context.user.vocabulary?.knownTerms || []).join("\u0000")]);
 
   useEffect(() => () => window.clearTimeout(navigationCollapseTimerRef.current), []);
+
+  useEffect(() => {
+    const handleHistoryNavigation = () => setPage(workspacePageFromPath(window.location.pathname));
+    window.addEventListener("popstate", handleHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleHistoryNavigation);
+  }, []);
+
+  const navigateTo = useCallback((nextPage) => {
+    const path = workspacePathForPage(nextPage);
+    if (window.location.pathname !== path) window.history.pushState({ page: nextPage }, "", path);
+    setPage(nextPage);
+  }, []);
 
   const openNavigation = () => {
     window.clearTimeout(navigationCollapseTimerRef.current);
@@ -1845,7 +1858,7 @@ function Workspace({ context, onContextChange, onLogout }) {
       }}
     >
       <Stack gap={5} width="100%">
-        <Button label={`${context.organization.name} 홈`} variant="ghost" width="100%" onClick={() => setPage("home")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+        <Button label={`${context.organization.name} 홈`} variant="ghost" width="100%" onClick={() => navigateTo("home")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
           <Stack direction="horizontal" gap={3} align="center" width="100%">
             <Stack width={40} height={40} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)", flex: "none" }}>
               <Icon icon="microphone" color="inherit" label="Voice Partition" />
@@ -1864,7 +1877,7 @@ function Workspace({ context, onContextChange, onLogout }) {
             variant="ghost"
             size="lg"
             width="100%"
-            onClick={() => setPage(value)}
+            onClick={() => navigateTo(value)}
             style={{
               color: page === "record" && value === "record" ? "var(--brand-ink)" : "inherit",
               background: page === value ? value === "record" ? "var(--brand-coral)" : "var(--color-rail-selected)" : "transparent",
@@ -1878,7 +1891,7 @@ function Workspace({ context, onContextChange, onLogout }) {
         </Stack>
       </Stack>
       <Stack gap={2} width="100%">
-        <Button label="내 설정" variant="ghost" width="100%" onClick={() => setPage("settings")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+        <Button label="내 설정" variant="ghost" width="100%" onClick={() => navigateTo("settings")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
           <Stack direction="horizontal" gap={3} align="center" width="100%">
             <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Avatar name={context.user.name} size="sm" /></Stack>
             <Stack gap={0.5} style={navigationLabelStyle}>
@@ -1895,8 +1908,8 @@ function Workspace({ context, onContextChange, onLogout }) {
   );
 
   let content;
-  const startNewMeeting = () => { recording.resetMeeting(); setPage("record"); };
-  const openMeeting = (meeting) => { recording.openMeeting(meeting); setPage("record"); };
+  const startNewMeeting = () => { recording.resetMeeting(); navigateTo("record"); };
+  const openMeeting = (meeting) => { recording.openMeeting(meeting); navigateTo("record"); };
   if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
@@ -1928,6 +1941,7 @@ export default function App() {
 
   const logout = async () => {
     await apiRequest("/api/auth/logout", { method: "POST" });
+    window.history.replaceState(null, "", "/");
     setContext(null);
   };
 

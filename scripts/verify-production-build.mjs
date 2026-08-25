@@ -31,6 +31,15 @@ const headers = await readFile(path.join(outputDirectory, "_headers"), "utf8");
 if (!headers.includes("/index.html") || !headers.includes("no-cache") || !headers.includes("/assets/*") || !headers.includes("immutable")) {
   throw new Error("Cloudflare 캐시 정책이 HTML 재검증과 해시 자산 불변 캐시를 보장하지 않습니다.");
 }
+for (const route of ["/record", "/documents", "/dictionary", "/settings"]) {
+  if (!headers.includes(`${route}\n  Cache-Control: no-cache`)) {
+    throw new Error(`${route}: Cloudflare 화면 경로에 HTML 재검증 정책이 없습니다.`);
+  }
+}
+const redirects = await readFile(path.join(outputDirectory, "_redirects"), "utf8");
+if (!redirects.split(/\r?\n/).some((line) => line.trim() === "/* /index.html 200")) {
+  throw new Error("Cloudflare SPA fallback이 설정되지 않았습니다.");
+}
 
 const javascriptFiles = (await readdir(path.join(outputDirectory, "assets")))
   .filter((file) => file.endsWith(".js"));

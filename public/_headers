@@ -4,6 +4,18 @@
 /index.html
   Cache-Control: no-cache, must-revalidate
 
+/record
+  Cache-Control: no-cache, must-revalidate
+
+/documents
+  Cache-Control: no-cache, must-revalidate
+
+/dictionary
+  Cache-Control: no-cache, must-revalidate
+
+/settings
+  Cache-Control: no-cache, must-revalidate
+
 /deployment.json
   Cache-Control: no-store
 
