@@ -2,10 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 function deploymentMetadata() {
-  const commit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || "local");
+  const commit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.WORKERS_CI_COMMIT_SHA || process.env.GITHUB_SHA || "local");
   const metadata = {
     commit,
-    branch: String(process.env.CF_PAGES_BRANCH || "local"),
+    branch: String(process.env.CF_PAGES_BRANCH || process.env.WORKERS_CI_BRANCH || "local"),
     apiOriginConfigured: Boolean(process.env.VITE_API_ORIGIN)
   };
   return {

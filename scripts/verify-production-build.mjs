@@ -21,7 +21,7 @@ if (!reactVendorImport) {
 await access(path.resolve(path.dirname(path.join(outputDirectory, entryScriptPath)), reactVendorImport[1]));
 
 const metadata = JSON.parse(await readFile(path.join(outputDirectory, "deployment.json"), "utf8"));
-const expectedCommit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || "local");
+const expectedCommit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.WORKERS_CI_COMMIT_SHA || process.env.GITHUB_SHA || "local");
 if (metadata.commit !== expectedCommit) throw new Error("배포 메타데이터의 커밋이 빌드 환경과 일치하지 않습니다.");
 if (!html.includes(`name="voice-partition-commit" content="${expectedCommit}"`)) {
   throw new Error("프로덕션 HTML에 배포 커밋 메타데이터가 없습니다.");
