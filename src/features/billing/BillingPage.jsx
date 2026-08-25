@@ -161,7 +161,6 @@ export function BillingPage({ context, onBillingChange }) {
         <LayoutContent padding={6}>
           <Stack gap={6}>
             {feedback && <Banner status={feedback.status} title={feedback.message} isDismissable onDismiss={() => setFeedback(null)} />}
-            {billing?.payment?.mode === "test" && <Banner status="info" title="테스트 결제 환경" description="실제 금액은 청구되지 않으며 Toss 테스트 결제창으로 진행됩니다." />}
             {billing && (
               <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={3}>
                 <Card padding={4}>
