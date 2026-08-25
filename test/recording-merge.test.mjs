@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning, liveSocketCloseCodes,
+  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
+  liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
   servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
@@ -217,6 +218,14 @@ test("recovers a suspended live audio context and reports an unrecoverable closu
 test("uses browser-authorized application close codes for fatal live failures", () => {
   assert.ok(Object.values(liveSocketCloseCodes).every((code) => code >= 3_000 && code <= 4_999));
   assert.notEqual(liveSocketCloseCodes.invalidResponse, liveSocketCloseCodes.serverError);
+});
+
+test("bounds browser audio buffering to five seconds of 16 kHz mono PCM", () => {
+  const openState = globalThis.WebSocket?.OPEN ?? 1;
+  assert.equal(maximumBufferedAudioBytes, 160_000);
+  assert.equal(liveSocketCanAcceptAudio({ readyState: openState, bufferedAmount: maximumBufferedAudioBytes }), true);
+  assert.equal(liveSocketCanAcceptAudio({ readyState: openState, bufferedAmount: maximumBufferedAudioBytes + 1 }), false);
+  assert.equal(liveSocketCanAcceptAudio({ readyState: 3, bufferedAmount: 0 }), false);
 });
 
 test("offers a verified probe as a profile sample only when it meets enrollment duration", () => {

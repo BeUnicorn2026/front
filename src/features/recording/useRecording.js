@@ -3,8 +3,16 @@ import { apiRequest, patchJson, postJson, websocketUrl } from "../../api.js";
 
 export const liveSocketCloseCodes = Object.freeze({
   serverError: 4001,
-  invalidResponse: 4002
+  invalidResponse: 4002,
+  audioBackpressure: 4003
 });
+
+export const maximumBufferedAudioBytes = 16_000 * 2 * 5;
+
+export function liveSocketCanAcceptAudio(socket, maximumBytes = maximumBufferedAudioBytes) {
+  return socket?.readyState === 1
+    && Number(socket.bufferedAmount || 0) <= maximumBytes;
+}
 
 export function mergeSegments(committed, incoming) {
   const next = committed.map((segment) => ({ ...segment }));
@@ -506,7 +514,7 @@ export function useRecording() {
       window.clearTimeout(timeout);
       reject(new Error("실시간 서버에 연결하지 못했습니다."));
     }, { once: true });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       window.clearTimeout(timeout);
       socketDisconnectedRef.current = true;
       if (socketRef.current === socket) socketRef.current = null;
@@ -521,7 +529,10 @@ export function useRecording() {
         setIsRecording(false);
         setIsBusy(true);
         setStatus("연결 종료 · 기록 보존 중");
-        setNotice(terminalMessage || "실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.");
+        const closeMessage = event.code === liveSocketCloseCodes.audioBackpressure
+          ? "네트워크 지연으로 음성 전송이 5초 이상 밀려 현재까지의 기록을 저장했습니다. 연결을 확인한 뒤 다시 시작해 주세요."
+          : "실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.";
+        setNotice(terminalMessage || closeMessage);
         if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       }
     });
@@ -541,7 +552,13 @@ export function useRecording() {
       const measuredLevel = pcmInputLevel(data);
       smoothedLevel = smoothedLevel * 0.7 + measuredLevel * 0.3;
       setAudioLevel(Math.round(smoothedLevel));
-      if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(data);
+      const socket = socketRef.current;
+      if (socket?.readyState !== WebSocket.OPEN) return;
+      if (!liveSocketCanAcceptAudio(socket)) {
+        socket.close(liveSocketCloseCodes.audioBackpressure, "audio backpressure");
+        return;
+      }
+      socket.send(data);
     };
     source.connect(processor).connect(muted).connect(context.destination);
     await ensureAudioContextRunning(context);
