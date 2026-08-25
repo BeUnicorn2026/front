@@ -16,10 +16,13 @@ test("home keeps one expanding profile, dense meeting rows, and a compact room-c
   assert.doesNotMatch(dashboard, /<Card key=\{meeting\.id\}/);
 
   assert.match(dashboard, /data-home-dock/);
-  assert.match(dashboard, /useState\(\["", "", "", ""\]\)/);
+  assert.match(dashboard, /const \[code, setCode\] = useState\(\(\) => normalizeRoomCode\(initialRoomCode\)\)/);
+  assert.match(dashboard, /aria-label="4자리 방 코드"/);
+  assert.match(dashboard, /Array\.from\(\{ length: 4 \}/);
   assert.match(dashboard, /event\.clientY > bounds\.top \+ bounds\.height \* 0\.82/);
-  assert.match(dashboard, /if \(event\.key === "Enter" && ready\) onStart\(code\.join\(""\)\)/);
-  assert.match(dashboard, /if \(!codeRefs\.current\.includes\(document\.activeElement\)\) setDockUp\(false\)/);
+  assert.match(dashboard, /roomCodeKeyAction\(code, event\)/);
+  assert.match(dashboard, /document\.activeElement !== codeInputRef\.current/);
+  assert.match(dashboard, /isEditableTarget\(event\.target\)/);
   assert.match(dashboard, /transform: dockUp \? "translateY\(0\)" : "translateY\(68%\)"/);
 
   assert.match(dashboard, /value="bio" label="자기소개"/);
@@ -32,7 +35,7 @@ test("home keeps one expanding profile, dense meeting rows, and a compact room-c
 
 test("home and meeting room bypass navigation while supporting a staged room entry", async () => {
   const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  assert.match(source, /if \(page === "home" \|\| page === "record"\) return <AppShell variant="surface" height="fill" contentPadding=\{0\}/);
+  assert.match(source, /const shell = page === "home" \|\| page === "record"[\s\S]*\? <AppShell variant="surface" height="fill" contentPadding=\{0\}/);
   assert.match(source, /function MeetingEntryScreen/);
   assert.match(source, /data-meeting-entry-loading/);
   assert.match(source, /setMeetingEntryPhase\(reducedMotion \? "loading" : "exiting"\)/);

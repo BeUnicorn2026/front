@@ -16,6 +16,8 @@ npm run desktop:dev
 
 The meeting room switches the single desktop window to a narrow portrait layout and keeps it above other applications. The home screen restores the normal window size.
 
+When the backend enables Live Map, the meeting structure panel consumes `livemap-delta` and `livemap-state` messages from the existing live WebSocket and updates the dialogue tree in real time. No frontend environment variable is required; when Live Map is disabled or unavailable, live captions continue normally and the panel simply receives no live structure updates.
+
 To use another backend:
 
 ```bash

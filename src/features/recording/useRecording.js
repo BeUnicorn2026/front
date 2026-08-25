@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, patchJson, postJson, websocketUrl } from "../../api.js";
+import { applyLiveMapEvent, createLiveMapState } from "../meeting/liveMapState.js";
 
 export const liveSocketCloseCodes = Object.freeze({
   serverError: 4001,
@@ -14,9 +15,37 @@ export function liveSocketCanAcceptAudio(socket, maximumBytes = maximumBufferedA
     && Number(socket.bufferedAmount || 0) <= maximumBytes;
 }
 
+function persistedSegmentSequence(segment) {
+  const sequence = Number(segment?.sequence);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : null;
+}
+
+export function orderPersistedRoomSegments(segments) {
+  const bySequence = new Map();
+  const withoutSequence = [];
+  for (const segment of Array.isArray(segments) ? segments : []) {
+    const sequence = persistedSegmentSequence(segment);
+    if (sequence == null) withoutSequence.push({ ...segment });
+    else if (!bySequence.has(sequence)) bySequence.set(sequence, { ...segment, sequence });
+  }
+  return [
+    ...[...bySequence.values()].sort((left, right) => left.sequence - right.sequence),
+    ...withoutSequence
+  ];
+}
+
 export function mergeSegments(committed, incoming) {
   const next = committed.map((segment) => ({ ...segment }));
+  let receivedPersistedSequence = false;
   for (const segment of incoming) {
+    const sequence = persistedSegmentSequence(segment);
+    if (sequence != null) {
+      receivedPersistedSequence = true;
+      if (!next.some((existing) => persistedSegmentSequence(existing) === sequence)) {
+        next.push({ ...segment, sequence });
+      }
+      continue;
+    }
     if (segment.known && segment.sourceSpeaker != null) {
       for (const previousSegment of next) {
         const sameProviderCluster = previousSegment.sourceSpeaker === segment.sourceSpeaker;
@@ -59,7 +88,7 @@ export function mergeSegments(committed, incoming) {
       next.push({ ...segment });
     }
   }
-  return next;
+  return receivedPersistedSequence ? orderPersistedRoomSegments(next) : next;
 }
 
 export function correctTranscriptSegment(segments, target, text) {
@@ -194,8 +223,21 @@ export function recordingCompletionStatus(interrupted) {
   return interrupted ? "interrupted" : "completed";
 }
 
+export function roomMeetingHydration(meeting) {
+  if (!meeting?.id) return null;
+  const segments = orderPersistedRoomSegments(meeting.segments);
+  return { meeting: { ...meeting, segments }, segments, duration: Number(meeting.duration) || 0 };
+}
+
 export function meetingsAfterRemoval(meetings, meetingId) {
   return meetings.filter(({ id }) => id !== meetingId);
+}
+
+export function roomSocketClosure(event, roomId = "") {
+  if (!roomId || Number(event?.code) !== 1000 || String(event?.reason || "") !== "room closed") return null;
+  const error = new Error("회의 생성자가 회의를 종료했습니다. 현재까지의 기록은 보존됩니다.");
+  error.code = "ROOM_CLOSED";
+  return error;
 }
 
 export function recordingStartErrorMessage(error) {
@@ -287,12 +329,14 @@ export function useRecording() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [segments, setSegments] = useState([]);
   const [hasResult, setHasResult] = useState(false);
+  const [liveMap, setLiveMap] = useState(createLiveMapState);
   const [speakers, setSpeakers] = useState([]);
   const [services, setServices] = useState({});
   const [meetings, setMeetings] = useState([]);
   const [activeMeeting, setActiveMeeting] = useState(null);
   const [audioInputs, setAudioInputs] = useState([]);
   const [selectedAudioInputId, setSelectedAudioInputId] = useState("");
+  const [roomClosed, setRoomClosed] = useState(false);
 
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -318,6 +362,10 @@ export function useRecording() {
   const interruptedRef = useRef(false);
   const socketDisconnectedRef = useRef(false);
   const finalizationStartedRef = useRef(false);
+  const roomIdRef = useRef("");
+  const stopPromiseRef = useRef(null);
+  const resolveStopRef = useRef(null);
+  const startAttemptRef = useRef(null);
   const uploadIdsRef = useRef(new Map());
   const meetingSaveQueueRef = useRef(null);
   if (!meetingSaveQueueRef.current) meetingSaveQueueRef.current = createMeetingSaveQueue();
@@ -422,7 +470,7 @@ export function useRecording() {
   }, [upsertMeeting]);
 
   const scheduleAutosave = useCallback((nextSegments) => {
-    if (!activeMeetingRef.current) return;
+    if (!activeMeetingRef.current || roomIdRef.current) return;
     pendingAutosaveRef.current = {
       status: "recording",
       segments: nextSegments.map((segment) => ({ ...segment })),
@@ -451,6 +499,11 @@ export function useRecording() {
 
   const handleSocketEvent = useCallback((event) => {
     setServices((current) => servicesAfterLiveEvent(current, event));
+    if (event.type === "room-closed" || event.code === "ROOM_CLOSED") {
+      setRoomClosed(true);
+      setNotice(event.message || "회의가 종료되었습니다. 현재까지의 기록은 보존됩니다.");
+      return;
+    }
     if (event.type === "error") {
       setNotice(event.message);
       return;
@@ -466,6 +519,10 @@ export function useRecording() {
     }
     if (event.type === "finalized") {
       finalizationRef.current?.();
+      return;
+    }
+    if (event.type === "livemap-delta" || event.type === "livemap-state") {
+      setLiveMap((current) => applyLiveMapEvent(current, event));
       return;
     }
     if (event.type !== "transcript") return;
@@ -491,11 +548,14 @@ export function useRecording() {
     };
     const timeout = window.setTimeout(finish, 5_000);
     finalizationRef.current = finish;
-    socket.send(JSON.stringify({ type: "finalize" }));
+    const meetingId = activeMeetingRef.current?.id;
+    socket.send(JSON.stringify(meetingId ? { type: "finalize", meetingId } : { type: "finalize" }));
   }), []);
 
-  const openLiveSocket = useCallback(() => new Promise((resolve, reject) => {
+  const openLiveSocket = useCallback((roomId = "", meetingId = "") => new Promise((resolve, reject) => {
     const parameters = new URLSearchParams({ language: languageRef.current, mode: modeRef.current });
+    if (roomId) parameters.set("roomId", roomId);
+    if (roomId && meetingId) parameters.set("meetingId", meetingId);
     const socket = new WebSocket(websocketUrl(`/api/live?${parameters}`));
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
@@ -526,7 +586,9 @@ export function useRecording() {
       } else if (event.type === "error" && !ready) {
         window.clearTimeout(timeout);
         socket.close(liveSocketCloseCodes.serverError, "server error");
-        reject(new Error(event.message));
+        const error = new Error(event.message);
+        error.code = event.code;
+        reject(error);
       } else if (event.type === "error") {
         terminalMessage = event.message || "실시간 서버 오류로 기록을 종료합니다.";
         socket.close(liveSocketCloseCodes.serverError, "server error");
@@ -541,19 +603,31 @@ export function useRecording() {
       socketDisconnectedRef.current = true;
       if (socketRef.current === socket) socketRef.current = null;
       finalizationRef.current?.();
+      const roomClosure = roomSocketClosure(event, roomIdRef.current);
+      if (roomClosure) {
+        setRoomClosed(true);
+        setStatus("회의 종료 · 기록 보존");
+        setNotice(roomClosure.message);
+      }
       if (!ready) {
-        reject(new Error("실시간 연결이 준비되기 전에 종료되었습니다. 잠시 후 다시 시도해 주세요."));
+        reject(roomClosure || new Error("실시간 연결이 준비되기 전에 종료되었습니다. 잠시 후 다시 시도해 주세요."));
         return;
       }
       if (recordingRef.current) {
-        interruptedRef.current = true;
+        const wasRoomClosed = Boolean(roomClosure);
+        interruptedRef.current = !wasRoomClosed;
+        if (wasRoomClosed) {
+          setRoomClosed(true);
+        }
         recordingRef.current = false;
         setIsRecording(false);
         setIsBusy(true);
-        setStatus("연결 종료 · 기록 보존 중");
-        const closeMessage = event.code === liveSocketCloseCodes.audioBackpressure
-          ? "네트워크 지연으로 음성 전송이 5초 이상 밀려 현재까지의 기록을 저장했습니다. 연결을 확인한 뒤 다시 시작해 주세요."
-          : "실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.";
+        setStatus(wasRoomClosed ? "회의 종료 · 기록 보존" : "연결 종료 · 기록 보존 중");
+        const closeMessage = wasRoomClosed
+          ? "회의 생성자가 회의를 종료했습니다. 현재까지의 기록은 보존됩니다."
+          : event.code === liveSocketCloseCodes.audioBackpressure
+            ? "네트워크 지연으로 음성 전송이 5초 이상 밀려 현재까지의 기록을 저장했습니다. 연결을 확인한 뒤 다시 시작해 주세요."
+            : "실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.";
         setNotice(terminalMessage || closeMessage);
         if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       }
@@ -619,8 +693,11 @@ export function useRecording() {
   }, []);
 
   const finalizeRecording = useCallback(async () => {
-    if (finalizationStartedRef.current) return;
+    if (finalizationStartedRef.current) return stopPromiseRef.current;
     finalizationStartedRef.current = true;
+    if (!stopPromiseRef.current) {
+      stopPromiseRef.current = new Promise((resolve) => { resolveStopRef.current = resolve; });
+    }
     const recorder = mediaRecorderRef.current;
     const recording = new Blob(chunksRef.current, { type: recorder?.mimeType || "audio/webm" });
     pendingAutosaveRef.current = null;
@@ -628,11 +705,12 @@ export function useRecording() {
     setStatus("마지막 발화 확정 중");
     await finalizeLiveSocket();
     cleanupCapture();
+    const isRoomMeeting = Boolean(roomIdRef.current);
     const liveSegments = committedRef.current;
     let finalSegments = liveSegments;
-    if (recording.size && services.openai && modeRef.current === "speaker") setStatus("최종 화자 재검증 중");
+    if (!isRoomMeeting && recording.size && services.openai && modeRef.current === "speaker") setStatus("최종 화자 재검증 중");
     try {
-      if (recording.size && services.openai && modeRef.current === "speaker") {
+      if (!isRoomMeeting && recording.size && services.openai && modeRef.current === "speaker") {
         const result = await submitAudio(recording, `recording-${Date.now()}.webm`);
         if (result.segments?.length) {
           finalSegments = applyManualSpeakerCorrections(result.segments, liveSegments, speakerCorrectionsRef.current);
@@ -642,24 +720,31 @@ export function useRecording() {
           setHasResult(true);
         }
       }
-      await saveActiveMeeting({
-        status: recordingCompletionStatus(interruptedRef.current),
-        segments: finalSegments,
-        duration: elapsedRef.current
-      });
+      if (!isRoomMeeting) {
+        await saveActiveMeeting({
+          status: recordingCompletionStatus(interruptedRef.current),
+          segments: finalSegments,
+          duration: elapsedRef.current
+        });
+      }
     } catch (error) {
       setNotice(`실시간 기록은 유지했습니다. ${error.message}`);
-      await saveActiveMeeting({
-        status: recordingCompletionStatus(interruptedRef.current),
-        segments: finalSegments,
-        duration: elapsedRef.current
-      }).catch(() => undefined);
+      if (!isRoomMeeting) {
+        await saveActiveMeeting({
+          status: recordingCompletionStatus(interruptedRef.current),
+          segments: finalSegments,
+          duration: elapsedRef.current
+        }).catch(() => undefined);
+      }
     } finally {
       finishRecording();
+      resolveStopRef.current?.();
+      resolveStopRef.current = null;
+      stopPromiseRef.current = null;
     }
   }, [cleanupCapture, finalizeLiveSocket, finishRecording, saveActiveMeeting, services.openai, submitAudio]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async ({ roomId = "" } = {}) => {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.AudioWorkletNode) {
       setNotice("이 브라우저는 실시간 음성 처리를 지원하지 않습니다.");
       return;
@@ -672,19 +757,33 @@ export function useRecording() {
       setNotice("서버에 Deepgram API 키가 설정되어 있지 않습니다.");
       return;
     }
+    const startAttempt = { cancelled: false, settled: null, resolve: null };
+    startAttempt.settled = new Promise((resolve) => { startAttempt.resolve = resolve; });
+    startAttemptRef.current = startAttempt;
+    const ensureStartActive = () => {
+      if (!startAttempt.cancelled) return;
+      const error = new Error("녹음 시작이 취소되었습니다.");
+      error.code = "RECORDING_START_CANCELLED";
+      throw error;
+    };
     setNotice("");
     setIsBusy(true);
     setStatus("마이크와 모델 연결 중");
     setSegments([]);
+    setLiveMap(createLiveMapState());
     setHasResult(true);
-    activeMeetingRef.current = null;
-    setActiveMeeting(null);
+    if (!roomId || activeMeetingRef.current?.roomId !== roomId) {
+      activeMeetingRef.current = null;
+      setActiveMeeting(null);
+    }
     committedRef.current = [];
     speakerCorrectionsRef.current.clear();
     transcriptCorrectionsRef.current = [];
     pendingAutosaveRef.current = null;
     autosaveFailuresRef.current = 0;
     interruptedRef.current = false;
+    roomIdRef.current = roomId;
+    setRoomClosed(false);
     socketDisconnectedRef.current = false;
     finalizationStartedRef.current = false;
     chunksRef.current = [];
@@ -695,17 +794,36 @@ export function useRecording() {
         audio: microphoneConstraints(selectedAudioInputId)
       });
       mediaStreamRef.current = stream;
+      ensureStartActive();
       refreshAudioInputs().catch(() => undefined);
-      await openLiveSocket();
+      const meetingPath = roomId ? `/api/rooms/${encodeURIComponent(roomId)}/meetings` : "/api/meetings";
+      const requestedMeetingId = roomId && activeMeetingRef.current?.roomId === roomId
+        ? activeMeetingRef.current.id
+        : "";
+      const created = await postJson(meetingPath, {
+        language: languageRef.current,
+        source: "live",
+        mode: modeRef.current,
+        ...(requestedMeetingId ? { meetingId: requestedMeetingId } : {})
+      });
+      ensureStartActive();
+      const hydrated = roomMeetingHydration(created.meeting);
+      if (!hydrated) throw new Error("회의 응답에 진행 중인 회의 정보가 없습니다.");
+      createdMeeting = hydrated.meeting;
+      activeMeetingRef.current = hydrated.meeting;
+      setActiveMeeting(hydrated.meeting);
+      upsertMeeting(hydrated.meeting);
+      committedRef.current = hydrated.segments;
+      setSegments(hydrated.segments);
+      elapsedRef.current = hydrated.duration;
+      setElapsed(hydrated.duration);
+      await openLiveSocket(roomId, hydrated.meeting.id);
+      ensureStartActive();
       if (socketDisconnectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
         throw new Error("실시간 연결이 종료되었습니다. 잠시 후 다시 시작해 주세요.");
       }
-      const created = await postJson("/api/meetings", { language: languageRef.current, source: "live", mode: modeRef.current });
-      createdMeeting = created.meeting;
-      activeMeetingRef.current = created.meeting;
-      setActiveMeeting(created.meeting);
-      upsertMeeting(created.meeting);
       await startPcmStream(stream);
+      ensureStartActive();
       if (socketDisconnectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
         throw new Error("실시간 연결이 종료되었습니다. 현재 회의를 중단 기록으로 저장합니다.");
       }
@@ -737,8 +855,7 @@ export function useRecording() {
         recorder.stop();
         return;
       }
-      const startedAt = Date.now();
-      setElapsed(0);
+      const startedAt = Date.now() - elapsedRef.current * 1_000;
       timerRef.current = setInterval(() => {
         elapsedRef.current = (Date.now() - startedAt) / 1000;
         setElapsed(elapsedRef.current);
@@ -747,6 +864,8 @@ export function useRecording() {
       setIsRecording(true);
       setIsBusy(false);
       setStatus("녹음 중 · 첫 발화 대기");
+      startAttemptRef.current = null;
+      startAttempt.resolve();
       pcmContextWatchCleanupRef.current = watchAudioContext(pcmContextRef.current, (error) => {
         if (!recordingRef.current) return;
         interruptedRef.current = true;
@@ -760,24 +879,42 @@ export function useRecording() {
       });
     } catch (error) {
       cleanupCapture();
-      if (createdMeeting) {
+      if (createdMeeting && !roomId) {
         await saveActiveMeeting({ status: "interrupted", segments: committedRef.current, duration: elapsedRef.current }).catch(() => undefined);
       }
+      if (error?.code === "ROOM_CLOSED") setRoomClosed(true);
       setIsBusy(false);
-      setStatus("연결하지 못했어요");
-      setNotice(recordingStartErrorMessage(error));
+      if (error?.code === "RECORDING_START_CANCELLED") {
+        setStatus("녹음 준비");
+      } else {
+        setStatus("연결하지 못했어요");
+        setNotice(recordingStartErrorMessage(error));
+      }
+    } finally {
+      if (startAttemptRef.current === startAttempt) startAttemptRef.current = null;
+      startAttempt.resolve();
     }
   }, [cleanupCapture, finalizeRecording, openLiveSocket, refreshAudioInputs, saveActiveMeeting, selectedAudioInputId, services.deepgram, speakers.length, startPcmStream, upsertMeeting]);
 
-  const stop = useCallback(() => {
-    if (!recordingRef.current) return;
+  const stop = useCallback(async () => {
+    const starting = startAttemptRef.current;
+    if (starting) {
+      starting.cancelled = true;
+      cleanupCapture();
+      await starting.settled;
+    }
+    if (stopPromiseRef.current) return stopPromiseRef.current;
+    if (!recordingRef.current && !mediaRecorderRef.current) return undefined;
+    stopPromiseRef.current = new Promise((resolve) => { resolveStopRef.current = resolve; });
     recordingRef.current = false;
     setIsRecording(false);
     setIsBusy(true);
     setStatus("녹음 마무리 중");
     interruptedRef.current = false;
     if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-  }, []);
+    else void finalizeRecording();
+    return stopPromiseRef.current;
+  }, [cleanupCapture, finalizeRecording]);
 
   const transcribeFile = useCallback(async (file) => {
     if (!file) return;
@@ -818,6 +955,7 @@ export function useRecording() {
       .filter(({ transcriptCorrected }) => transcriptCorrected)
       .map(({ start, end, text }) => ({ start, end, text }));
     setSegments(meeting.segments || []);
+    setLiveMap(createLiveMapState());
     setHasResult(true);
     elapsedRef.current = Number(meeting.duration) || 0;
     setElapsed(elapsedRef.current);
@@ -887,6 +1025,20 @@ export function useRecording() {
     return result.value;
   }, [saveActiveMeeting, scheduleAutosave, segments]);
 
+  const bindRoomMeeting = useCallback((meeting) => {
+    const hydrated = roomMeetingHydration(meeting);
+    if (!hydrated) return false;
+    activeMeetingRef.current = hydrated.meeting;
+    setActiveMeeting(hydrated.meeting);
+    committedRef.current = hydrated.segments;
+    setSegments(hydrated.segments);
+    elapsedRef.current = hydrated.duration;
+    setElapsed(hydrated.duration);
+    setHasResult(Boolean(hydrated.segments.length));
+    roomIdRef.current = hydrated.meeting.roomId || roomIdRef.current;
+    return true;
+  }, []);
+
   const resetMeeting = useCallback(() => {
     activeMeetingRef.current = null;
     setActiveMeeting(null);
@@ -896,9 +1048,12 @@ export function useRecording() {
     pendingAutosaveRef.current = null;
     autosaveFailuresRef.current = 0;
     interruptedRef.current = false;
+    roomIdRef.current = "";
+    setRoomClosed(false);
     socketDisconnectedRef.current = false;
     finalizationStartedRef.current = false;
     setSegments([]);
+    setLiveMap(createLiveMapState());
     setHasResult(false);
     elapsedRef.current = 0;
     setElapsed(0);
@@ -947,9 +1102,9 @@ export function useRecording() {
   return {
     language, setLanguage, mode, setMode: changeMode, isRecording, isBusy, status,
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
-    elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
+    elapsed, audioLevel, segments, hasResult, liveMap, speakers, services, meetings, activeMeeting, roomClosed,
     audioInputs, selectedAudioInputId, setSelectedAudioInputId,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, bindRoomMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }

@@ -4,8 +4,8 @@ import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
   liveRecordingStatusAfterEvent, liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
-  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
-  persistMeetingCorrection, servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
+  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, orderPersistedRoomSegments, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
+  persistMeetingCorrection, roomMeetingHydration, roomSocketClosure, servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -15,6 +15,25 @@ test("combines STT confidence independently from speaker similarity", () => {
   );
   assert.equal(result[0].confidence, 0.9);
   assert.ok(result[0].transcriptConfidence > 0.73 && result[0].transcriptConfidence < 0.74);
+});
+
+test("sequence-bearing room segments dedupe and order without time-merging across reconnects", () => {
+  const persisted = [
+    { id: "old", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "이전 연결" }
+  ];
+  const nextSession = [
+    { id: "new", sequence: 1, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "새 연결" },
+    { id: "duplicate", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "중복" }
+  ];
+
+  const result = mergeSegments(persisted, nextSession);
+  assert.deepEqual(result.map(({ sequence }) => sequence), [0, 1]);
+  assert.deepEqual(result.map(({ text }) => text), ["이전 연결", "새 연결"]);
+  assert.equal(result[0].text.includes("새 연결"), false);
+
+  const hydrated = orderPersistedRoomSegments([nextSession[0], persisted[0], nextSession[1]]);
+  assert.deepEqual(hydrated.map(({ sequence }) => sequence), [0, 1]);
+  assert.deepEqual(hydrated.map(({ text }) => text), ["이전 연결", "새 연결"]);
 });
 
 test("corrects transcript text and preserves it across final transcription", () => {
@@ -256,6 +275,14 @@ test("recovers a suspended live audio context and reports an unrecoverable closu
   assert.equal(listener, null);
 });
 
+test("recognizes server room closure before or after socket readiness", () => {
+  const closure = roomSocketClosure({ code: 1000, reason: "room closed" }, "room-one");
+  assert.equal(closure.code, "ROOM_CLOSED");
+  assert.match(closure.message, /회의 생성자/);
+  assert.equal(roomSocketClosure({ code: 1000, reason: "recording stopped" }, "room-one"), null);
+  assert.equal(roomSocketClosure({ code: 1000, reason: "room closed" }, ""), null);
+});
+
 test("uses browser-authorized application close codes for fatal live failures", () => {
   assert.ok(Object.values(liveSocketCloseCodes).every((code) => code >= 3_000 && code <= 4_999));
   assert.notEqual(liveSocketCloseCodes.invalidResponse, liveSocketCloseCodes.serverError);
@@ -273,6 +300,20 @@ test("offers a verified probe as a profile sample only when it meets enrollment 
   assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: true }, quality: { duration: 4.9 } }), false);
   assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: false }, quality: { duration: 8 } }), false);
   assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: true }, quality: { duration: 5 } }), true);
+});
+
+test("hydrates a rebound room meeting with its persisted transcript and duration", () => {
+  const meeting = {
+    id: "meeting-room",
+    roomId: "room-one",
+    duration: "14.5",
+    segments: [{ id: "persisted", sequence: 0, text: "이미 저장된 발화" }]
+  };
+  const hydrated = roomMeetingHydration(meeting);
+  assert.equal(hydrated.meeting.id, "meeting-room");
+  assert.deepEqual(hydrated.segments, meeting.segments);
+  assert.equal(hydrated.duration, 14.5);
+  assert.equal(roomMeetingHydration({ roomId: "room-one" }), null);
 });
 
 test("removes only the confirmed meeting from local document state", () => {

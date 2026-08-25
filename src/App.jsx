@@ -40,10 +40,21 @@ import {
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
+import { toRendererResult } from "./features/meeting/liveMapState";
+import { isEditableTarget, normalizeRoomCode, printableRoomCharacter, roomCodeKeyAction, updateRoomCode } from "./features/meeting/roomInput";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 import { BillingPage } from "./features/billing/BillingPage";
 import { useMeetMap } from "./features/meeting/useMeetMap";
+import {
+  VoiceEnrollmentDialog,
+  VOICE_ENROLLMENT_REQUIRED_MESSAGE,
+  accessCodeFromLocation,
+  clearAccessCodeFromLocation,
+  enrollVoice,
+  getVoiceEnrollmentStatus,
+  joinRoomByAccessCode
+} from "./features/voice-enrollment";
 
 function useViewport() {
   const [viewport, setViewport] = useState(() => ({
@@ -167,7 +178,7 @@ function BrandStory({ compact = false }) {
 function AuthScreen({ onAuthenticated }) {
   const { compact, desktop, reducedMotion } = useViewport();
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", introduction: "", email: "", password: "" });
   const [verification, setVerification] = useState(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
@@ -186,7 +197,10 @@ function AuthScreen({ onAuthenticated }) {
         });
         return onAuthenticated(context);
       }
-      const context = await postJson(`/api/auth/${mode}`, form);
+      const authPayload = mode === "signup"
+        ? { name: form.name, introduction: form.introduction, email: form.email, password: form.password }
+        : { email: form.email, password: form.password };
+      const context = await postJson(`/api/auth/${mode}`, authPayload);
       if (context.verificationRequired) {
         setVerification(context);
         setVerificationCode(context.developmentCode || "");
@@ -323,7 +337,10 @@ function AuthScreen({ onAuthenticated }) {
                 <Stack gap={6}>
                   <FormLayout defaultOptionality="required">
                     {mode === "signup" && (
-                      <TextInput label="이름" value={form.name} onChange={(name) => setForm({ ...form, name })} isRequired width="100%" />
+                      <>
+                        <TextInput label="이름" value={form.name} onChange={(name) => setForm({ ...form, name })} isRequired width="100%" />
+                        <TextArea label="자기소개" value={form.introduction} onChange={(introduction) => setForm({ ...form, introduction })} maxLength={500} isRequired width="100%" />
+                      </>
                     )}
                     <TextInput type="email" label="회사 이메일" value={form.email} onChange={(email) => setForm({ ...form, email })} isRequired width="100%" />
                     <TextInput type="password" label="비밀번호" value={form.password} onChange={(password) => setForm({ ...form, password })} description="8자 이상 입력해 주세요." isRequired width="100%" />
@@ -1264,7 +1281,7 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
     />
   );
 
-  const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
+  const roomLink = `${window.location.origin}/record`;
   const copyRoomInvitation = async () => {
     try {
       await navigator.clipboard.writeText(roomLink);
@@ -1482,10 +1499,14 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
   );
 }
 
-function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap }) {
-  const trees = useMemo(() => meetMap?.result?.topics?.length
-    ? buildDialogueMapTreesFromResult(meetMap.result, segments)
-    : buildDialogueMapTrees(segments), [meetMap?.result, segments]);
+function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap, liveMap }) {
+  const liveActive = Boolean(liveMap?.active && liveMap.result?.topics?.length);
+  const trees = useMemo(() => {
+    if (liveActive) return buildDialogueMapTreesFromResult(toRendererResult(liveMap, segments.length), segments);
+    return meetMap?.result?.topics?.length
+      ? buildDialogueMapTreesFromResult(meetMap.result, segments)
+      : buildDialogueMapTrees(segments);
+  }, [liveActive, liveMap, meetMap?.result, segments]);
   const layout = useMemo(() => buildDialogueMapLayout(trees), [trees]);
   const activeNodeId = isRecording ? trees.at(-1)?.children.at(-1)?.id || trees.at(-1)?.root.id : null;
   const presentation = {
@@ -1500,11 +1521,16 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap
       <Stack padding={5} style={{ borderBottom: "var(--border-width) solid var(--color-border)" }}>
         <Stack direction="horizontal" justify="between" align="center" gap={3}>
           <Heading level={2}>구조도</Heading>
-          <StatusDot
-            variant={isRecording ? "error" : "neutral"}
-            label={meetMap?.pending ? "구조 갱신 중" : isRecording ? "분석 중" : `${trees.length}개 주제`}
-            isPulsing={Boolean(meetMap?.pending || isRecording)}
-          />
+          <Stack direction="horizontal" align="center" gap={2}>
+            {liveMap?.active && !liveMap.finalized && (
+              <StatusDot variant="error" label="실시간 구조화" isPulsing />
+            )}
+            <StatusDot
+              variant={isRecording ? "error" : "neutral"}
+              label={meetMap?.pending ? "구조 갱신 중" : isRecording ? "분석 중" : `${trees.length}개 주제`}
+              isPulsing={Boolean(meetMap?.pending || isRecording)}
+            />
+          </Stack>
         </Stack>
       </Stack>
       <Stack isScrollable height="100%" padding={3} style={{ minHeight: 0, background: "var(--color-background-muted)" }}>
@@ -1581,7 +1607,7 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap
   );
 }
 
-function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, user, readOnly = false }) {
+function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, user, readOnly = false }) {
   const { compact, desktop, reducedMotion } = useViewport();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [participantOpen, setParticipantOpen] = useState(false);
@@ -1589,7 +1615,10 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const displayedSegments = recording.segments;
   const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id, readOnly);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
-  const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
+  const roomCode = meetingRoomCode(room);
+  const roomAccessCode = typeof room?.accessCode === "string" ? room.accessCode : "";
+  const isRoomCreator = Boolean(room?.createdBy && room.createdBy === user?.id);
+  const roomLink = roomAccessCode ? `${window.location.origin}/record?access=${encodeURIComponent(roomAccessCode)}` : "";
   const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";
   const participantTransition = reducedMotion
     ? "none"
@@ -1620,8 +1649,9 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const toggleRecording = () => {
     if (readOnly) return undefined;
     if (recording.isRecording) return recording.stop();
+    if (recording.roomClosed) return undefined;
     if (meetingLimitReached) return onOpenBilling();
-    return recording.start();
+    return recording.start({ roomId: room?.id || "" });
   };
 
   const participantControl = (
@@ -1680,12 +1710,13 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
               <Token label="열람" color="teal" size="sm" />
             ) : (
               <IconButton
-                label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
-                tooltip={recording.isRecording ? "기록 중지" : "기록 시작"}
-                icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
+                label={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                tooltip={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : "기록 시작"}
+                icon={<Icon icon={recording.isRecording ? "stop" : recording.roomClosed ? "info" : meetingLimitReached ? "info" : "microphone"} />}
                 variant={recording.isRecording ? "destructive" : "primary"}
                 size="lg"
                 onClick={toggleRecording}
+                isDisabled={recording.roomClosed}
                 isLoading={recording.isBusy}
               />
             )}
@@ -1752,13 +1783,19 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
                 </Stack>
               )}
               endContent={!desktop && !readOnly ? (
-                <IconButton
-                  label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
-                  icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
-                  variant={recording.isRecording ? "destructive" : "primary"}
-                  onClick={toggleRecording}
-                  isLoading={recording.isBusy}
-                />
+                <Stack direction="horizontal" gap={2}>
+                  {isRoomCreator && !recording.roomClosed && (
+                    <IconButton label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
+                  )}
+                  <IconButton
+                    label={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                    icon={<Icon icon={recording.isRecording ? "stop" : recording.roomClosed ? "info" : meetingLimitReached ? "info" : "microphone"} />}
+                    variant={recording.isRecording ? "destructive" : "primary"}
+                    onClick={toggleRecording}
+                    isDisabled={recording.roomClosed}
+                    isLoading={recording.isBusy}
+                  />
+                </Stack>
               ) : undefined}
             />
           </LayoutHeader>
@@ -1771,7 +1808,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
             {desktop ? (
               <Stack data-desktop-meeting-workspace direction="horizontal" gap={3} height="100%" style={{ minHeight: 0 }}>
                 <Stack width="32%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", flex: "none", minHeight: 0 }}>
-                  <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} />
+                  <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} liveMap={recording.liveMap} />
                 </Stack>
                 <Stack width="100%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}>
                   <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
@@ -1802,7 +1839,14 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
               <Toolbar
                 label={readOnly ? "회의 기록 제어" : "데스크톱 회의 제어"}
                 size="lg"
-                startContent={<Button label={readOnly ? "기록 닫기" : "회의 나가기"} icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} style={{ color: "var(--color-text-red)" }} />}
+                startContent={(
+                  <Stack direction="horizontal" gap={2}>
+                    <Button label={readOnly ? "기록 닫기" : "회의 나가기"} icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} style={{ color: "var(--color-text-red)" }} />
+                    {!readOnly && isRoomCreator && !recording.roomClosed && (
+                      <Button label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
+                    )}
+                  </Stack>
+                )}
                 centerContent={(
                   <Stack
                     aria-hidden
@@ -1818,7 +1862,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
         ) : undefined}
       />
 
-      {!readOnly && (
+      {!readOnly && roomCode && roomAccessCode && (
         <Stack
           as="aside"
           data-room-invite-drawer
@@ -2163,9 +2207,10 @@ function meetingDurationLabel(duration) {
 }
 
 function meetingRoomCode(meeting) {
-  const explicitCode = meeting?.roomCode || meeting?.code;
-  const source = explicitCode || meeting?.id || "MEET";
-  return String(source).replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase().padEnd(4, "V");
+  const room = meeting?.room && typeof meeting.room === "object" ? meeting.room : meeting;
+  const explicitCode = room?.room || room?.access || room?.roomCode || room?.code;
+  const normalizedCode = normalizeRoomCode(explicitCode);
+  return normalizedCode.length === 4 ? normalizedCode : null;
 }
 
 function meetingParticipantSummary(meeting, fallbackName) {
@@ -2217,42 +2262,102 @@ function MeetingEntryScreen({ roomCode }) {
   );
 }
 
-function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recording, entryPhase = "idle" }) {
+function DashboardPage({
+  context,
+  onStart,
+  onOpen,
+  onNavigate,
+  onLogout,
+  recording,
+  entryPhase = "idle",
+  onContextChange,
+  initialRoomCode = "",
+  voiceEnrollment,
+  onOpenVoiceEnrollment,
+  onRetryVoiceEnrollment,
+  accessJoin
+}) {
   const { compact, reducedMotion } = useViewport();
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountTab, setAccountTab] = useState("bio");
   const [dockUp, setDockUp] = useState(false);
-  const [code, setCode] = useState(["", "", "", ""]);
-  const [profileIntroduction, setProfileIntroduction] = useState(() => window.localStorage.getItem(`voice-partition:bio:${context.user.id}`) || "");
+  const [code, setCode] = useState(() => normalizeRoomCode(initialRoomCode));
+  const [roomError, setRoomError] = useState("");
+  const [profileIntroduction, setProfileIntroduction] = useState(() => context.user.introduction || "");
   const [profileSaved, setProfileSaved] = useState(false);
-  const codeRefs = useRef([]);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const codeInputRef = useRef(null);
   const dockCollapseTimerRef = useRef(null);
   const recentMeetings = recording.meetings.slice(0, 8);
   const roles = context.user.vocabulary?.roles || [];
   const knownTerms = context.user.vocabulary?.knownTerms || [];
-  const ready = code.every(Boolean);
-  const nextCodeIndex = code.findIndex((character) => !character);
+  const ready = code.length === 4;
   const transition = reducedMotion ? "none" : "all var(--duration-slow) var(--motion-navigation-ease)";
 
-  useEffect(() => () => window.clearTimeout(dockCollapseTimerRef.current), []);
-
-  const setCodeCharacter = (index, value) => {
-    const character = String(value || "").replace(/[^a-zA-Z0-9]/g, "").slice(-1).toUpperCase();
-    setCode((current) => current.map((item, itemIndex) => itemIndex === index ? character : item));
-    if (character && index < codeRefs.current.length - 1) codeRefs.current[index + 1]?.focus();
-  };
-  const handleCodeKey = (index, event) => {
-    if (event.key === "Backspace" && !code[index] && index > 0) {
-      setCode((current) => current.map((item, itemIndex) => itemIndex === index - 1 ? "" : item));
-      codeRefs.current[index - 1]?.focus();
+  const raiseDock = useCallback(() => {
+    window.clearTimeout(dockCollapseTimerRef.current);
+    setDockUp(true);
+    if (!isEditableTarget(document.activeElement)) {
+      window.requestAnimationFrame(() => codeInputRef.current?.focus());
     }
-    if (event.key === "Enter" && ready) onStart(code.join(""));
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(dockCollapseTimerRef.current), []);
+  useEffect(() => {
+    const handleGlobalTyping = (event) => {
+      if (!dockUp || isEditableTarget(event.target)) return;
+      const character = printableRoomCharacter(event);
+      if (!character) return;
+      event.preventDefault();
+      setRoomError("");
+      setCode((current) => updateRoomCode(current, `${current}${character}`));
+      codeInputRef.current?.focus();
+    };
+    window.addEventListener("keydown", handleGlobalTyping);
+    return () => window.removeEventListener("keydown", handleGlobalTyping);
+  }, [dockUp]);
+
+  const submitRoom = async () => {
+    if (!ready) return;
+    setRoomError("");
+    if (!voiceEnrollment.ready) {
+      setRoomError(VOICE_ENROLLMENT_REQUIRED_MESSAGE);
+      onOpenVoiceEnrollment();
+      return;
+    }
+    try {
+      await onStart(code);
+    } catch (error) {
+      setRoomError(error.message || "회의실에 입장하지 못했습니다. 다시 시도해 주세요.");
+      codeInputRef.current?.focus();
+    }
+  };
+  const handleCodeKey = (event) => {
+    const action = roomCodeKeyAction(code, event);
+    if (!action.handled) return;
+    event.preventDefault();
+    if (action.code !== code) setCode(action.code);
+    if (action.submit) void submitRoom();
   };
   const scheduleDockCollapse = () => {
     window.clearTimeout(dockCollapseTimerRef.current);
     dockCollapseTimerRef.current = window.setTimeout(() => {
-      if (!codeRefs.current.includes(document.activeElement)) setDockUp(false);
+      if (document.activeElement !== codeInputRef.current) setDockUp(false);
     }, 360);
+  };
+  const saveIntroduction = async () => {
+    setProfileBusy(true);
+    setProfileError("");
+    try {
+      const nextContext = await putJson("/api/profile", { introduction: profileIntroduction });
+      onContextChange(nextContext);
+      setProfileSaved(true);
+    } catch (error) {
+      setProfileError(error.message || "자기소개를 저장하지 못했습니다.");
+    } finally {
+      setProfileBusy(false);
+    }
   };
 
   const accountContent = accountTab === "bio" ? (
@@ -2263,11 +2368,12 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
         value={profileIntroduction}
         onChange={(value) => { setProfileIntroduction(value); setProfileSaved(false); }}
         placeholder={roles.length ? `${roles.join(" · ")} 업무를 담당합니다. ${knownTerms.length ? `${knownTerms.slice(0, 6).join(", ")} 용어에 익숙합니다.` : "회의 중 낯선 용어는 쉽게 설명해 주세요."}` : "업무 역할과 익숙한 분야를 적어 주세요."}
-        maxLength={300}
+        maxLength={500}
         width="100%"
       />
+      <Feedback message={profileError} onDismiss={() => setProfileError("")} />
       <Stack direction="horizontal" justify="end">
-        <Button label={profileSaved ? "저장됨" : "자기소개 저장"} variant="primary" size="sm" onClick={() => { window.localStorage.setItem(`voice-partition:bio:${context.user.id}`, profileIntroduction); setProfileSaved(true); }} />
+        <Button label={profileSaved ? "저장됨" : "자기소개 저장"} variant="primary" size="sm" onClick={saveIntroduction} isLoading={profileBusy} />
       </Stack>
     </Stack>
   ) : accountTab === "settings" ? (
@@ -2318,15 +2424,46 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
           onPointerMove={(event) => {
             const bounds = event.currentTarget.getBoundingClientRect();
             if (event.clientY > bounds.top + bounds.height * 0.82) {
-              window.clearTimeout(dockCollapseTimerRef.current);
-              setDockUp(true);
-            } else if (!codeRefs.current.includes(document.activeElement)) scheduleDockCollapse();
+              raiseDock();
+            } else if (document.activeElement !== codeInputRef.current) scheduleDockCollapse();
           }}
           onPointerLeave={scheduleDockCollapse}
           style={{ position: "relative", overflow: "hidden", background: "var(--color-background-surface)" }}
         >
           <Center width="100%" height="100%" paddingInline={compact ? 3 : 5} style={{ alignItems: "flex-start" }}>
             <Stack width="100%" maxWidth="calc(var(--spacing-10) * 16)" height="100%" gap={4} paddingBlockStart={compact ? 3 : 6} paddingBlockEnd="calc(var(--spacing-10) * 3)" style={{ minHeight: 0 }}>
+              {accessJoin.state !== "idle" && (
+                <Banner
+                  status={accessJoin.state === "error" ? "error" : accessJoin.state === "joined" ? "success" : accessJoin.state === "blocked" ? "warning" : "info"}
+                  title={accessJoin.state === "joining"
+                    ? "초대받은 회의실에 참여하고 있습니다"
+                    : accessJoin.state === "error"
+                      ? "초대 링크로 참여하지 못했습니다"
+                      : accessJoin.state === "joined"
+                        ? "초대받은 회의실에 참여했습니다"
+                        : accessJoin.state === "blocked"
+                          ? "목소리를 등록한 뒤 초대 링크로 참여할 수 있습니다"
+                          : "초대 링크 참여를 준비하고 있습니다"}
+                  description={accessJoin.error || (accessJoin.state === "joined" ? "회의실 입장을 준비하고 있습니다." : "접근 코드를 안전하게 확인하는 중입니다.")}
+                  endContent={accessJoin.state === "error"
+                    ? <Button label="초대 링크 다시 시도" variant="secondary" size="sm" onClick={accessJoin.retry} />
+                    : accessJoin.state === "blocked"
+                      ? <Button label="목소리 등록" variant="primary" size="sm" onClick={onOpenVoiceEnrollment} />
+                      : undefined}
+                />
+              )}
+              {!voiceEnrollment.ready && (
+                <Banner
+                  status={voiceEnrollment.state === "loading" ? "info" : voiceEnrollment.state === "error" ? "error" : "warning"}
+                  title={voiceEnrollment.state === "loading" ? "목소리 등록 상태를 확인하고 있습니다" : "회의 전에 내 목소리를 등록해 주세요"}
+                  description={voiceEnrollment.error || "방 만들기, 초대 링크 참여, 회의실 입장은 등록 완료 뒤 사용할 수 있습니다."}
+                  endContent={voiceEnrollment.state === "error"
+                    ? <Button label="상태 다시 확인" variant="secondary" size="sm" onClick={onRetryVoiceEnrollment} />
+                    : voiceEnrollment.state !== "loading"
+                      ? <Button label="목소리 등록" variant="primary" size="sm" onClick={onOpenVoiceEnrollment} />
+                      : undefined}
+                />
+              )}
               <Card
                 padding={0}
                 data-home-account
@@ -2392,7 +2529,7 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
                           <Stack direction="horizontal" gap={2} align="center" style={{ flex: "none" }}>
                             {!compact && <AvatarGroup size="sm">{participants.names.map((name, index) => <Avatar key={`${name}-${index}`} name={name} />)}</AvatarGroup>}
                             <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>{participants.count}명</Text>
-                            <Text type="code" color="secondary" style={{ whiteSpace: "nowrap", background: "var(--color-background-muted)", borderRadius: "var(--radius-inner)", padding: "var(--spacing-1) var(--spacing-2)" }}>{meetingRoomCode(meeting)}</Text>
+                            <Text type="code" color="secondary" style={{ whiteSpace: "nowrap", background: "var(--color-background-muted)", borderRadius: "var(--radius-inner)", padding: "var(--spacing-1) var(--spacing-2)" }}>{meetingRoomCode(meeting) || "이전 회의"}</Text>
                           </Stack>
                         )}
                       />
@@ -2412,8 +2549,9 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
           <Card
             padding={0}
             data-home-dock
-            onPointerEnter={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
+            onPointerEnter={raiseDock}
             onPointerLeave={scheduleDockCollapse}
+            onClick={() => codeInputRef.current?.focus()}
             style={{
               position: "absolute",
               insetInlineStart: "50%",
@@ -2432,40 +2570,53 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
                 <Stack width="var(--spacing-10)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} />
                 <Text weight="semibold">방 코드로 입장</Text>
               </Stack>
-              <Stack direction="horizontal" gap={2} width="100%">
-                {code.map((character, index) => (
-                  <Stack
-                    as="input"
-                    key={index}
-                    ref={(element) => { codeRefs.current[index] = element; }}
-                    aria-label={`방 코드 ${index + 1}번째 문자`}
-                    value={character}
-                    placeholder="·"
-                    maxLength={1}
-                    onChange={(event) => setCodeCharacter(index, event.target.value)}
-                    onKeyDown={(event) => handleCodeKey(index, event)}
-                    onFocus={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
-                    onBlur={scheduleDockCollapse}
-                    width="100%"
-                    height="calc(var(--spacing-10) + var(--spacing-2))"
-                    style={{
-                      minWidth: 0,
-                      border: 0,
-                      borderRadius: "var(--radius-element)",
-                      background: character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
-                      boxShadow: `inset 0 0 0 var(--spacing-0-5) ${index === nextCodeIndex ? "var(--color-accent)" : character ? "var(--color-accent)" : "var(--color-border)"}`,
-                      color: "var(--color-text-primary)",
-                      fontFamily: "var(--font-family-code)",
-                      fontSize: "var(--font-size-xl)",
-                      fontWeight: "var(--font-weight-semibold)",
-                      textAlign: "center",
-                      textTransform: "uppercase",
-                      outline: "none",
-                      transition
-                    }}
-                  />
-                ))}
+              <Stack width="100%" style={{ position: "relative" }}>
+                <Stack
+                  as="input"
+                  ref={codeInputRef}
+                  aria-label="4자리 방 코드"
+                  aria-describedby={roomError ? "room-code-error" : undefined}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  inputMode="text"
+                  value={code}
+                  onChange={(event) => { setRoomError(""); setCode(updateRoomCode(code, event.target.value)); }}
+                  onKeyDown={handleCodeKey}
+                  onFocus={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
+                  onBlur={scheduleDockCollapse}
+                  width="100%"
+                  height="calc(var(--spacing-10) + var(--spacing-2))"
+                  style={{ position: "absolute", inset: 0, zIndex: 1, border: 0, opacity: 0, cursor: "text" }}
+                />
+                <Stack direction="horizontal" gap={2} width="100%" aria-hidden style={{ pointerEvents: "none" }}>
+                  {Array.from({ length: 4 }, (_, index) => {
+                    const character = code[index] || "";
+                    return (
+                      <Stack
+                        key={index}
+                        align="center"
+                        justify="center"
+                        width="100%"
+                        height="calc(var(--spacing-10) + var(--spacing-2))"
+                        style={{
+                          minWidth: 0,
+                          borderRadius: "var(--radius-element)",
+                          background: character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
+                          boxShadow: `inset 0 0 0 var(--spacing-0-5) ${index === code.length ? "var(--color-accent)" : character ? "var(--color-accent)" : "var(--color-border)"}`,
+                          color: "var(--color-text-primary)",
+                          fontFamily: "var(--font-family-code)",
+                          fontSize: "var(--font-size-xl)",
+                          fontWeight: "var(--font-weight-semibold)",
+                          transition
+                        }}
+                      >
+                        {character || "·"}
+                      </Stack>
+                    );
+                  })}
+                </Stack>
               </Stack>
+              {roomError && <Text id="room-code-error" type="supporting" color="red">{roomError}</Text>}
             </Stack>
           </Card>
         </LayoutContent>
@@ -2903,17 +3054,27 @@ function SettingsPage({ context, recording }) {
 
 function Workspace({ context, onContextChange, onLogout }) {
   const { compact, reducedMotion } = useViewport();
-  const [page, setPage] = useState(() => workspacePageFromPath(window.location.pathname));
+  const initialAccessCodeRef = useRef(accessCodeFromLocation());
+  const [voiceEnrollment, setVoiceEnrollment] = useState({ state: "loading", profile: null, ready: false, error: "" });
+  const [voiceEnrollmentOpen, setVoiceEnrollmentOpen] = useState(false);
+  const [accessJoin, setAccessJoin] = useState(() => initialAccessCodeRef.current
+    ? { state: "pending", error: "" }
+    : { state: "idle", error: "" });
+  const [page, setPage] = useState(() => {
+    const requestedPage = workspacePageFromPath(window.location.pathname);
+    return requestedPage === "record" ? "home" : requestedPage;
+  });
   const [vocabularyTerms, setVocabularyTerms] = useState([]);
   const [billing, setBilling] = useState(null);
-  const [roomCode, setRoomCode] = useState(() => {
-    const requestedCode = new URLSearchParams(window.location.search).get("room")?.toUpperCase();
-    return /^[A-Z0-9]{4}$/.test(requestedCode || "") ? requestedCode : "A7K2";
-  });
+  const [room, setRoom] = useState(null);
   const [meetingEntryPhase, setMeetingEntryPhase] = useState("idle");
   const [meetingReadOnly, setMeetingReadOnly] = useState(false);
+  const roomRequestRef = useRef(null);
+  const accessJoinRequestRef = useRef(null);
   const meetingEntryTimersRef = useRef([]);
   const recording = useRecording();
+  const pageRef = useRef(page);
+  const recordingStopRef = useRef(recording.stop);
   const pageTitles = {
     documents: "회의 문서",
     dictionary: "용어 사전",
@@ -2926,6 +3087,33 @@ function Workspace({ context, onContextChange, onLogout }) {
     setVocabularyTerms(result.terms || []);
     return result.terms || [];
   };
+
+  const refreshVoiceEnrollment = useCallback(async () => {
+    setVoiceEnrollment((current) => ({ ...current, state: "loading", ready: false, error: "" }));
+    try {
+      const status = await getVoiceEnrollmentStatus();
+      setVoiceEnrollment({ ...status, error: "" });
+      if (!status.ready) setVoiceEnrollmentOpen(true);
+      return status;
+    } catch (error) {
+      const status = { state: "error", profile: null, ready: false, error: error.message || "목소리 등록 상태를 확인하지 못했습니다." };
+      setVoiceEnrollment(status);
+      setVoiceEnrollmentOpen(true);
+      return status;
+    }
+  }, []);
+
+  const handleVoiceEnroll = useCallback(async (file) => {
+    const status = await enrollVoice(file);
+    setVoiceEnrollment({ ...status, error: "" });
+    if (initialAccessCodeRef.current) setAccessJoin({ state: "pending", error: "" });
+    await recording.reload().catch(() => undefined);
+    return status;
+  }, [recording.reload]);
+
+  useEffect(() => {
+    void refreshVoiceEnrollment();
+  }, [context.organization.id, context.user.id, refreshVoiceEnrollment]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2947,11 +3135,18 @@ function Workspace({ context, onContextChange, onLogout }) {
     meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
+  useEffect(() => { pageRef.current = page; }, [page]);
+  useEffect(() => { recordingStopRef.current = recording.stop; }, [recording.stop]);
+
   useEffect(() => {
-    const handleHistoryNavigation = () => {
+    const handleHistoryNavigation = async () => {
       meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       meetingEntryTimersRef.current = [];
       setMeetingEntryPhase("idle");
+      if (pageRef.current === "record") {
+        await recordingStopRef.current();
+        setRoom(null);
+      }
       setPage(workspacePageFromPath(window.location.pathname));
     };
     window.addEventListener("popstate", handleHistoryNavigation);
@@ -2969,12 +3164,17 @@ function Workspace({ context, onContextChange, onLogout }) {
     setPage(nextPage);
   }, []);
 
-  const beginMeetingEntry = (prepare, nextRoomCode) => {
+  const requireVoiceEnrollment = useCallback(() => {
+    if (voiceEnrollment.ready) return true;
+    setVoiceEnrollmentOpen(true);
+    return false;
+  }, [voiceEnrollment.ready]);
+
+  const beginMeetingEntry = useCallback((prepare, nextRoom) => {
     if (meetingEntryPhase !== "idle") return;
-    const normalizedRoomCode = String(nextRoomCode || "A7K2").toUpperCase();
     meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     meetingEntryTimersRef.current = [];
-    setRoomCode(normalizedRoomCode);
+    setRoom(nextRoom || null);
     prepare();
     setMeetingEntryPhase(reducedMotion ? "loading" : "exiting");
 
@@ -2986,16 +3186,81 @@ function Workspace({ context, onContextChange, onLogout }) {
       setMeetingEntryPhase("idle");
       meetingEntryTimersRef.current = [];
     }, reducedMotion ? 360 : 1280));
+  }, [meetingEntryPhase, navigateTo, reducedMotion, recording.resetMeeting]);
+
+  const startNewMeeting = async (nextRoomCode) => {
+    if (!requireVoiceEnrollment()) throw new Error(VOICE_ENROLLMENT_REQUIRED_MESSAGE);
+    const normalizedRoomCode = normalizeRoomCode(nextRoomCode);
+    if (normalizedRoomCode.length !== 4) throw new Error("4자리 방 코드를 입력해 주세요.");
+    if (!roomRequestRef.current || roomRequestRef.current.room !== normalizedRoomCode) {
+      roomRequestRef.current = { room: normalizedRoomCode, idempotencyKey: crypto.randomUUID() };
+    }
+    const result = await postJson("/api/rooms", roomRequestRef.current);
+    const createdRoom = result?.room;
+    if (!createdRoom || typeof createdRoom !== "object") throw new Error("회의실 응답에 방 정보가 없습니다.");
+    roomRequestRef.current = null;
+    beginMeetingEntry(
+      () => { setMeetingReadOnly(false); recording.resetMeeting(); },
+      createdRoom
+    );
+  };
+  const leaveMeeting = useCallback(async () => {
+    await recording.stop();
+    setRoom(null);
+    navigateTo("home");
+  }, [navigateTo, recording.stop]);
+
+  const endMeeting = useCallback(async () => {
+    if (!room?.id || room.createdBy !== context.user.id) return;
+    await recording.stop();
+    const result = await postJson(`/api/rooms/${encodeURIComponent(room.id)}/close`, {});
+    if (result?.meeting) recording.updateMeeting(result.meeting);
+    else await recording.reload();
+    setRoom(null);
+    navigateTo("home");
+  }, [context.user.id, navigateTo, recording.reload, recording.stop, recording.updateMeeting, room]);
+
+  const openMeeting = (meeting) => {
+    beginMeetingEntry(
+      () => { setMeetingReadOnly(true); recording.openMeeting(meeting); },
+      meeting?.room && typeof meeting.room === "object" ? meeting.room : null
+    );
   };
 
-  const startNewMeeting = (nextRoomCode = roomCode) => beginMeetingEntry(
-    () => { setMeetingReadOnly(false); recording.resetMeeting(); },
-    nextRoomCode
-  );
-  const openMeeting = (meeting) => beginMeetingEntry(
-    () => { setMeetingReadOnly(true); recording.openMeeting(meeting); },
-    meetingRoomCode(meeting)
-  );
+  const joinAccessInvite = useCallback(async () => {
+    const accessCode = initialAccessCodeRef.current;
+    if (!accessCode || accessJoinRequestRef.current) return;
+    if (!requireVoiceEnrollment()) {
+      setAccessJoin({ state: "blocked", error: VOICE_ENROLLMENT_REQUIRED_MESSAGE });
+      return;
+    }
+    setAccessJoin({ state: "joining", error: "" });
+    const request = joinRoomByAccessCode(accessCode);
+    accessJoinRequestRef.current = request;
+    try {
+      const joinedRoom = await request;
+      if (accessJoinRequestRef.current !== request) return;
+      clearAccessCodeFromLocation();
+      initialAccessCodeRef.current = "";
+      setAccessJoin({ state: "joined", error: "" });
+      beginMeetingEntry(
+        () => { setMeetingReadOnly(false); recording.resetMeeting(); },
+        joinedRoom
+      );
+    } catch (error) {
+      if (accessJoinRequestRef.current === request) {
+        setAccessJoin({ state: "error", error: error.message || "초대 링크로 회의실에 참여하지 못했습니다." });
+      }
+    } finally {
+      if (accessJoinRequestRef.current === request) accessJoinRequestRef.current = null;
+    }
+  }, [beginMeetingEntry, recording.resetMeeting, requireVoiceEnrollment]);
+
+  useEffect(() => {
+    if (voiceEnrollment.ready && initialAccessCodeRef.current && accessJoin.state === "pending") {
+      void joinAccessInvite();
+    }
+  }, [accessJoin.state, joinAccessInvite, voiceEnrollment.ready]);
 
   const navigation = (
     <TopNav
@@ -3022,11 +3287,11 @@ function Workspace({ context, onContextChange, onLogout }) {
 
   let content;
   if (page === "home") {
-    const dashboard = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} entryPhase={meetingEntryPhase} />;
+    const dashboard = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} entryPhase={meetingEntryPhase} onContextChange={onContextChange} voiceEnrollment={voiceEnrollment} onOpenVoiceEnrollment={() => setVoiceEnrollmentOpen(true)} onRetryVoiceEnrollment={refreshVoiceEnrollment} accessJoin={{ ...accessJoin, retry: joinAccessInvite }} />;
     content = (
       <Stack height="100%" data-meeting-entry-stage style={{ position: "relative", overflow: "hidden", background: "var(--brand-cream)" }}>
         <Stack height="100%" aria-hidden={meetingEntryPhase === "idle"} style={{ visibility: meetingEntryPhase === "idle" ? "hidden" : "visible" }}>
-            <MeetingEntryScreen roomCode={roomCode} />
+            <MeetingEntryScreen roomCode={meetingRoomCode(room) || "회의실"} />
         </Stack>
         {meetingEntryPhase !== "loading" && <Stack height="100%" style={{ position: "absolute", inset: 0 }}>{dashboard}</Stack>}
       </Stack>
@@ -3036,10 +3301,22 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={() => navigateTo("home")} roomCode={roomCode} user={context.user} readOnly={meetingReadOnly} />;
+  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={leaveMeeting} onEnd={endMeeting} room={room} user={context.user} readOnly={meetingReadOnly} />;
 
-  if (page === "home" || page === "record") return <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>;
-  return <AppShell topNav={navigation} variant="surface" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
+  const shell = page === "home" || page === "record"
+    ? <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>
+    : <AppShell topNav={navigation} variant="surface" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
+  return (
+    <>
+      {shell}
+      <VoiceEnrollmentDialog
+        isOpen={voiceEnrollmentOpen}
+        onOpenChange={setVoiceEnrollmentOpen}
+        onEnroll={handleVoiceEnroll}
+        subtitle="회의실에 참여하려면 안내 문장을 읽어 내 목소리를 먼저 등록해 주세요. 닫아도 로그인과 워크스페이스는 유지됩니다."
+      />
+    </>
+  );
 }
 
 export default function App() {
@@ -3086,8 +3363,7 @@ export default function App() {
     );
   }
   if (sessionError) return <ServiceConnectionScreen error={sessionError} onRetry={loadSession} isRetrying={loading} />;
-  if (!context?.authenticated && !context?.user) return <AuthScreen onAuthenticated={setContext} />;
+  if (context?.authenticated !== true || !context?.user) return <AuthScreen onAuthenticated={setContext} />;
   if (!context.organization) return <OrganizationSetup context={context} onChange={setContext} />;
-  if (!context.user.vocabulary?.onboardedAt) return <VocabularyOnboarding context={context} onChange={setContext} />;
   return <Workspace context={context} onContextChange={setContext} onLogout={logout} />;
 }

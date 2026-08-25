@@ -24,11 +24,15 @@ test("secondary workspace pages expose only a contextual title and home exit", a
   assert.doesNotMatch(workspace, /<TopNavItem/);
   assert.doesNotMatch(workspace, /const navItems/);
   assert.match(workspace, /label="홈으로"/);
-  assert.match(workspace, /return <AppShell topNav=\{navigation\} variant="surface"/);
+  assert.match(workspace, /: <AppShell topNav=\{navigation\} variant="surface"/);
   assert.doesNotMatch(workspace, /sideNav=\{navigation\}/);
   assert.doesNotMatch(workspace, /background: "var\(--brand-ink\)"/);
   assert.match(workspace, /documents: "회의 문서"/);
   assert.match(workspace, /dictionary: "용어 사전"/);
+  assert.match(workspace, /postJson\("\/api\/rooms", roomRequestRef\.current\)/);
+  assert.match(workspace, /idempotencyKey: crypto\.randomUUID\(\)/);
+  assert.match(workspace, /setRoom\(nextRoom \|\| null\)/);
+  assert.doesNotMatch(workspace, /A7K2|\?room=|normalizeRoomCode\(new URLSearchParams/);
 });
 
 test("documents, dictionary, billing, and settings use capped content and row-first grouping", async () => {
