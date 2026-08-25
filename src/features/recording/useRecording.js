@@ -189,6 +189,15 @@ export function microphoneLevelPresentation(level, isRecording) {
   return { label: "마이크 입력 적정", variant: "success" };
 }
 
+export async function ensureAudioContextRunning(context) {
+  if (!context) throw new Error("오디오 처리 장치를 만들지 못했습니다.");
+  if (context.state === "suspended") await context.resume();
+  if (context.state !== "running") {
+    throw new Error("브라우저가 실시간 음성 처리를 시작하지 못했습니다. 페이지를 활성화한 뒤 다시 시도해 주세요.");
+  }
+  return context;
+}
+
 export function useRecording() {
   const [language, setLanguage] = useState("ko");
   const [mode, setMode] = useState("stt");
@@ -483,6 +492,7 @@ export function useRecording() {
       if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(data);
     };
     source.connect(processor).connect(muted).connect(context.destination);
+    await ensureAudioContextRunning(context);
   }, []);
 
   const startLevelMonitor = useCallback((stream) => {
@@ -506,6 +516,7 @@ export function useRecording() {
       animationRef.current = requestAnimationFrame(render);
     };
     animationRef.current = requestAnimationFrame(render);
+    context.resume().catch(() => undefined);
   }, []);
 
   const submitAudio = useCallback(async (blob, filename) => {

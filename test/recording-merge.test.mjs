@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
+  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
@@ -168,6 +168,18 @@ test("turns live microphone levels into actionable recording feedback", () => {
   assert.equal(microphoneLevelPresentation(6, true).variant, "warning");
   assert.equal(microphoneLevelPresentation(30, true).variant, "success");
   assert.equal(microphoneLevelPresentation(90, true).variant, "error");
+});
+
+test("resumes a suspended audio context before streaming PCM", async () => {
+  const context = {
+    state: "suspended",
+    async resume() { this.state = "running"; }
+  };
+  assert.equal(await ensureAudioContextRunning(context), context);
+  await assert.rejects(
+    ensureAudioContextRunning({ state: "closed", resume: async () => undefined }),
+    /실시간 음성 처리를 시작하지 못했습니다/
+  );
 });
 
 test("removes only the confirmed meeting from local document state", () => {
