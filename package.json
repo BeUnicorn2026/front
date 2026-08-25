@@ -9,6 +9,11 @@
   "astryx": {
     "theme": "./src/theme/voice-partition.js"
   },
+  "allowScripts": {
+    "@astryxdesign/cli@0.4.7": true,
+    "@astryxdesign/core@0.4.7": true,
+    "esbuild@0.28.2": true
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/verify-production-build.mjs",
