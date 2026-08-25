@@ -38,6 +38,7 @@ import {
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
+import { BillingPage } from "./features/billing/BillingPage";
 
 function useViewport() {
   const [viewport, setViewport] = useState(() => ({
@@ -1759,6 +1760,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   const { compact, reducedMotion } = useViewport();
   const [page, setPage] = useState(() => workspacePageFromPath(window.location.pathname));
   const [vocabularyTerms, setVocabularyTerms] = useState([]);
+  const [billing, setBilling] = useState(null);
   const [navigationExpanded, setNavigationExpanded] = useState(false);
   const navigationInteractionRef = useRef({ hovered: false, focused: false, pointerPress: false });
   const navigationCollapseTimerRef = useRef(null);
@@ -1784,6 +1786,14 @@ function Workspace({ context, onContextChange, onLogout }) {
       .catch(() => { if (!cancelled) setVocabularyTerms([]); });
     return () => { cancelled = true; };
   }, [context.organization.id, (context.user.vocabulary?.knownTerms || []).join("\u0000")]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/api/billing")
+      .then((result) => { if (!cancelled) setBilling(result); })
+      .catch(() => { if (!cancelled) setBilling(null); });
+    return () => { cancelled = true; };
+  }, [context.organization.id]);
 
   useEffect(() => () => window.clearTimeout(navigationCollapseTimerRef.current), []);
 
@@ -1902,6 +1912,15 @@ function Workspace({ context, onContextChange, onLogout }) {
         </Stack>
       </Stack>
       <Stack gap={2} width="100%">
+        <Button label="플랜 보기" variant="ghost" width="100%" onClick={() => navigateTo("billing")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+          <Stack direction="horizontal" gap={3} align="center" width="100%">
+            <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Icon icon="info" color="inherit" /></Stack>
+            <Stack gap={0.5} style={navigationLabelStyle}>
+              <Text color="inherit" weight="semibold" maxLines={1}>{billing?.subscription?.planId || "FREE"} 플랜</Text>
+              <Text color="inherit" type="supporting" maxLines={1}>{billing?.subscription?.planId === "FREE" ? "플랜 업그레이드" : "플랜 및 결제 관리"}</Text>
+            </Stack>
+          </Stack>
+        </Button>
         <Button label="내 설정" variant="ghost" width="100%" onClick={() => navigateTo("settings")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
           <Stack direction="horizontal" gap={3} align="center" width="100%">
             <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Avatar name={context.user.name} size="sm" /></Stack>
@@ -1924,6 +1943,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
+  else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
   else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
 
