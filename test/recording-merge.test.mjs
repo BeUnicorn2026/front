@@ -31,6 +31,21 @@ test("corrects transcript text and preserves it across final transcription", () 
   assert.equal(final[0].transcriptCorrected, true);
 });
 
+test("assigns each corrected sentence once when final segmentation changes", () => {
+  const split = applyManualTranscriptCorrections([
+    { start: 0, end: 1, text: "첫 재전사" },
+    { start: 1, end: 2, text: "둘째 재전사" }
+  ], [{ start: 0, end: 2, text: "한 번만 유지" }]);
+  assert.equal(split.filter(({ transcriptCorrected }) => transcriptCorrected).length, 1);
+  assert.equal(split.filter(({ text }) => text === "한 번만 유지").length, 1);
+
+  const combined = applyManualTranscriptCorrections(
+    [{ start: 0, end: 4, text: "하나의 긴 재전사" }],
+    [{ start: 0, end: 2, text: "첫 교정" }, { start: 2, end: 4, text: "둘째 교정" }]
+  );
+  assert.equal(combined[0].text, "첫 교정 둘째 교정");
+});
+
 test("retroactively corrects earlier unknown segments from the same diarization cluster", () => {
   const committed = [
     { speaker: "미등록 화자 A", sourceSpeaker: "0", known: false, start: 0, end: 2, text: "첫 발화" }

@@ -63,17 +63,29 @@ export function correctTranscriptSegment(segments, target, text) {
 export function applyManualTranscriptCorrections(finalSegments, corrections) {
   const entries = Array.isArray(corrections) ? corrections : [];
   if (!entries.length) return finalSegments;
-  return finalSegments.map((segment) => {
-    const start = Number(segment.start) || 0;
-    const end = Math.max(start, Number(segment.end) || start);
-    const duration = Math.max(0.1, end - start);
-    const best = entries.map((correction) => ({
-      correction,
-      overlap: Math.max(0, Math.min(end, Number(correction.end) || 0) - Math.max(start, Number(correction.start) || 0))
-    })).sort((left, right) => right.overlap - left.overlap)[0];
-    return best?.overlap / duration >= 0.6
-      ? { ...segment, text: best.correction.text, transcriptCorrected: true, transcriptConfidence: null }
-      : segment;
+  const assignments = new Map();
+  for (const correction of entries) {
+    const correctionStart = Number(correction.start) || 0;
+    const correctionEnd = Math.max(correctionStart, Number(correction.end) || correctionStart);
+    const correctionDuration = Math.max(0.1, correctionEnd - correctionStart);
+    const best = finalSegments.map((segment, index) => {
+      const segmentStart = Number(segment.start) || 0;
+      const segmentEnd = Math.max(segmentStart, Number(segment.end) || segmentStart);
+      const segmentDuration = Math.max(0.1, segmentEnd - segmentStart);
+      const overlap = Math.max(0, Math.min(segmentEnd, correctionEnd) - Math.max(segmentStart, correctionStart));
+      return { index, overlap, coverage: overlap / Math.min(segmentDuration, correctionDuration) };
+    }).sort((left, right) => right.overlap - left.overlap)[0];
+    if (!best || best.coverage < 0.6) continue;
+    const assigned = assignments.get(best.index) || [];
+    assigned.push({ ...correction, start: correctionStart });
+    assignments.set(best.index, assigned);
+  }
+  return finalSegments.map((segment, index) => {
+    const assigned = assignments.get(index);
+    if (!assigned?.length) return segment;
+    const text = assigned.sort((left, right) => left.start - right.start)
+      .map(({ text: correctionText }) => String(correctionText || "").trim()).filter(Boolean).join(" ");
+    return text ? { ...segment, text, transcriptCorrected: true, transcriptConfidence: null } : segment;
   });
 }
 
@@ -671,8 +683,9 @@ export function useRecording() {
     const next = correctTranscriptSegment(segments, target, text);
     const corrected = next.find((segment, index) => segment !== segments[index]);
     if (!corrected) return null;
+    const previousCorrections = transcriptCorrectionsRef.current;
     transcriptCorrectionsRef.current = [
-      ...transcriptCorrectionsRef.current.filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end),
+      ...previousCorrections.filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end),
       { start: corrected.start, end: corrected.end, text: corrected.text }
     ];
     committedRef.current = next.filter(({ pending }) => !pending);
@@ -682,8 +695,7 @@ export function useRecording() {
     } catch (error) {
       committedRef.current = segments.filter(({ pending }) => !pending);
       setSegments(segments);
-      transcriptCorrectionsRef.current = transcriptCorrectionsRef.current
-        .filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end);
+      transcriptCorrectionsRef.current = previousCorrections;
       throw error;
     }
   }, [saveActiveMeeting, segments]);
