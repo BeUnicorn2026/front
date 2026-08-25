@@ -7,6 +7,7 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Layout, LayoutContent, LayoutHeader } from "@astryxdesign/core/Layout";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Section } from "@astryxdesign/core/Section";
 import { Stack } from "@astryxdesign/core/Stack";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
@@ -140,6 +141,11 @@ export function BillingPage({ context, onBillingChange }) {
   };
 
   const subscription = billing?.subscription || { planId: "FREE" };
+  const meetingUsage = billing?.usage?.meetings;
+  const speakerUsage = billing?.usage?.speakers;
+  const durationHours = billing?.entitlements?.meetingDurationSeconds
+    ? billing.entitlements.meetingDurationSeconds / 3600
+    : 0;
   return (
     <Layout
       contentWidth={1120}
@@ -157,6 +163,33 @@ export function BillingPage({ context, onBillingChange }) {
             {feedback && <Banner status={feedback.status} title={feedback.message} isDismissable onDismiss={() => setFeedback(null)} />}
             {billing?.payment?.mode === "test" && <Banner status="info" title="테스트 결제 환경" description="실제 금액은 청구되지 않으며 Toss 테스트 결제창으로 진행됩니다." />}
             {billing && !billing.payment.enabled && <Banner status="warning" title="Toss 테스트 키가 필요합니다" description="서버의 TOSS_CLIENT_KEY와 TOSS_SECRET_KEY를 설정하면 유료 플랜 결제를 테스트할 수 있습니다." />}
+            {billing && (
+              <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={3}>
+                <Card padding={4}>
+                  <Stack gap={2}>
+                    <Text type="supporting">현재 기간 회의</Text>
+                    <Heading level={2}>{meetingUsage?.used || 0}{meetingUsage?.limit == null ? "회" : ` / ${meetingUsage.limit}회`}</Heading>
+                    {meetingUsage?.limit != null && <ProgressBar label="회의 사용량" value={Math.min(100, Math.round((meetingUsage.used / meetingUsage.limit) * 100))} hasValueLabel />}
+                    <Text type="supporting">{new Date(billing.usage.periodStart).toLocaleDateString("ko-KR")}부터 집계</Text>
+                  </Stack>
+                </Card>
+                <Card padding={4}>
+                  <Stack gap={2}>
+                    <Text type="supporting">회의당 최대 시간</Text>
+                    <Heading level={2}>{durationHours < 1 ? `${Math.round(durationHours * 60)}분` : `${durationHours}시간`}</Heading>
+                    <Text type="supporting">실시간 기록과 파일 전사에 동일하게 적용</Text>
+                  </Stack>
+                </Card>
+                <Card padding={4}>
+                  <Stack gap={2}>
+                    <Text type="supporting">등록 화자</Text>
+                    <Heading level={2}>{speakerUsage?.used || 0} / {speakerUsage?.limit || 0}명</Heading>
+                    <ProgressBar label="화자 프로필 사용량" value={speakerUsage?.limit ? Math.min(100, Math.round((speakerUsage.used / speakerUsage.limit) * 100)) : 0} hasValueLabel />
+                    <Text type="supporting">조직 전체에서 공유하는 음성 프로필</Text>
+                  </Stack>
+                </Card>
+              </Grid>
+            )}
             <Section padding={0}>
               <Grid columns={{ minWidth: 260, max: 3, repeat: "fit" }} gap={4}>
                 {(billing?.plans || []).map((plan) => (

@@ -1964,7 +1964,7 @@ function Workspace({ context, onContextChange, onLogout }) {
             <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Icon icon="info" color="inherit" /></Stack>
             <Stack gap={0.5} style={navigationLabelStyle}>
               <Text color="inherit" weight="semibold" maxLines={1}>{billing?.subscription?.planId || "FREE"} 플랜</Text>
-              <Text color="inherit" type="supporting" maxLines={1}>{billing?.subscription?.planId === "FREE" ? "플랜 업그레이드" : "플랜 및 결제 관리"}</Text>
+              <Text color="inherit" type="supporting" maxLines={1}>{billing?.usage?.meetings?.remaining == null ? "회의 무제한" : `회의 ${billing?.usage?.meetings?.remaining ?? 0}회 남음`}</Text>
             </Stack>
           </Stack>
         </Button>
