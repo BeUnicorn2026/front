@@ -1546,6 +1546,9 @@ function SettingsPage({ context, recording }) {
                             2순위와 차이 {Math.round(identification.identification.scoreGap * 100)}%p · 필요한 차이 {Math.round(identification.identification.requiredMargin * 100)}%p · 입력 품질 {identification.quality.score}점
                           </Text>
                         )}
+                        {identification.verification?.reason === "enrollment_audio" && identification.verification.enrollmentAudioSimilarity != null && (
+                          <Text type="supporting">등록 음성과 내용 일치도 {Math.round(identification.verification.enrollmentAudioSimilarity * 1000) / 10}% · 별도 녹음으로 인정하려면 재인코딩이나 편집본이 아닌 다른 시점의 녹음이 필요합니다.</Text>
+                        )}
                         <Text type="supporting">판정이 불안정하면 같은 사람의 다른 날·거리·마이크 샘플을 추가한 뒤 다시 시험해 보세요.</Text>
                       </Stack>
                     )}
