@@ -35,6 +35,7 @@ import {
   ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
+import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 
@@ -1032,12 +1033,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
       size="sm"
       value={recording.language}
       onChange={recording.setLanguage}
-      options={[
-        { value: "ko", label: "한국어" },
-        { value: "en", label: "English" },
-        { value: "ja", label: "日本語" },
-        { value: "", label: "자동 감지" }
-      ]}
+      options={TRANSCRIPTION_LANGUAGE_OPTIONS}
     />
   );
 
@@ -1222,13 +1218,21 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                     <Button label="이해 패널" variant="secondary" size="sm" onClick={() => setInsightOpen(true)} />
                   </Stack>
                 )}
-                <SegmentedControl value={view} onChange={setView} label="회의 보기 방식" size="sm" layout={compact ? "fill" : "hug"}>
-                  <SegmentedControlItem value="outline" label="구조도" />
-                  <SegmentedControlItem value="tree" label="트리" />
-                  <SegmentedControlItem value="mindmap" label="마인드맵" />
-                  <SegmentedControlItem value="transcript" label="전사" />
-                  <SegmentedControlItem value="overview" label="요약" />
-                </SegmentedControl>
+                {compact ? (
+                  <Selector
+                    label="회의 보기 방식"
+                    value={view}
+                    onChange={setView}
+                    options={MEETING_VIEW_OPTIONS}
+                    width="100%"
+                  />
+                ) : (
+                  <SegmentedControl value={view} onChange={setView} label="회의 보기 방식" size="sm">
+                    {MEETING_VIEW_OPTIONS.map((option) => (
+                      <SegmentedControlItem key={option.value} value={option.value} label={option.label} />
+                    ))}
+                  </SegmentedControl>
+                )}
               </Stack>
             </Stack>
             {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={selectStructureBlock} isRecording={recording.isRecording} />}
