@@ -340,6 +340,10 @@ export function useRecording() {
       setNotice(event.message);
       return;
     }
+    if (event.type === "warning") {
+      setNotice(event.message);
+      return;
+    }
     if (event.type === "ready") {
       setStatus(event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨");
       return;
