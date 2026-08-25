@@ -1319,7 +1319,7 @@ function DictionaryPage({ terms, onRefresh }) {
 }
 
 function SettingsPage({ context, recording }) {
-  const { compact } = useViewport();
+  const { compact, desktop } = useViewport();
   const [members, setMembers] = useState([]);
   const [speakerName, setSpeakerName] = useState("");
   const [speakerFile, setSpeakerFile] = useState(null);
@@ -1416,8 +1416,10 @@ function SettingsPage({ context, recording }) {
         header={<PageHeader title="조직 및 음성 설정" description="구성원, 초대 코드와 조직 전용 화자 프로필을 관리합니다." />}
         content={(
         <LayoutContent padding={compact ? 3 : 4}>
-          <Stack gap={6} maxWidth={920}>
+          <Stack gap={6}>
             {feedback && <Feedback message={feedback} status={feedback.includes("등록했습니다") || feedback.includes("복사") ? "success" : "info"} onDismiss={() => setFeedback("")} />}
+            <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
+              <Stack gap={6} width="100%">
             <Section dividers={["bottom"]} paddingInline={0}>
               <Stack gap={3}>
                 <Heading level={2}>조직</Heading>
@@ -1540,6 +1542,39 @@ function SettingsPage({ context, recording }) {
                 </List>
               </Stack>
             </Section>
+              </Stack>
+              <Stack gap={4} width={desktop ? "var(--layout-dashboard-panel-width)" : "100%"} style={{ flex: "none" }}>
+                <Card padding={4}>
+                  <Stack gap={3}>
+                    <Stack direction="horizontal" justify="between" align="center">
+                      <Heading level={3}>음성 식별 상태</Heading>
+                      <StatusDot
+                        variant={recording.services.speakerModelState === "ready" ? "success" : recording.services.speakerModelState === "failed" ? "error" : "warning"}
+                        label={recording.services.speakerModelState === "ready" ? "화자 모델 준비됨" : recording.services.speakerModelState === "failed" ? "화자 모델 오류" : "화자 모델 준비 중"}
+                      />
+                    </Stack>
+                    <List hasDividers density="compact">
+                      <ListItem label="등록 화자" endContent={<Text type="code">{recording.speakers.length}명</Text>} />
+                      <ListItem label="별도 녹음 검증" endContent={<Text type="code">{recording.speakers.filter(({ crossSessionVerificationCount, verificationSuccessCount }) => (crossSessionVerificationCount || verificationSuccessCount || 0) > 0).length}명</Text>} />
+                      <ListItem label="생체정보 저장" endContent={<Token label={recording.services.biometricEncryption ? "암호화" : "개발 모드"} color={recording.services.biometricEncryption ? "green" : "yellow"} size="sm" />} />
+                    </List>
+                  </Stack>
+                </Card>
+                <Card padding={4} variant="muted">
+                  <Stack gap={3}>
+                    <Heading level={3}>내 설명 기준</Heading>
+                    <Text type="supporting">회의 용어는 이 역할과 이미 아는 개념을 기준으로 개인화됩니다.</Text>
+                    <Stack direction="horizontal" gap={2} wrap="wrap">
+                      {(context.user.roles || []).length
+                        ? context.user.roles.map((role) => <Token key={role} label={role} color="teal" size="sm" />)
+                        : <Token label="일반 업무" color="default" size="sm" />}
+                    </Stack>
+                    <Text type="supporting">아는 개념 {(context.user.vocabulary?.knownTerms || []).length}개</Text>
+                  </Stack>
+                </Card>
+                <Banner status="info" title="음성 프로필은 조직 전용입니다." description="등록된 음성은 현재 조직 안의 화자 식별에만 사용되며, 지식 상태는 본인에게만 표시됩니다." />
+              </Stack>
+            </Stack>
           </Stack>
         </LayoutContent>
         )}
