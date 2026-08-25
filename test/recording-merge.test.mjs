@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
-  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, recordingCompletionStatus, recordingStartErrorMessage,
+  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
   servicesAfterLiveEvent, speakerProbeCanBecomeSample
 } from "../src/features/recording/useRecording.js";
 
@@ -166,9 +166,20 @@ test("turns live microphone levels into actionable recording feedback", () => {
     label: "말할 때 입력 레벨을 확인합니다", variant: "neutral"
   });
   assert.equal(microphoneLevelPresentation(1, true).variant, "neutral");
-  assert.equal(microphoneLevelPresentation(6, true).variant, "warning");
+  assert.equal(microphoneLevelPresentation(12, true).variant, "warning");
   assert.equal(microphoneLevelPresentation(30, true).variant, "success");
-  assert.equal(microphoneLevelPresentation(90, true).variant, "error");
+  assert.equal(microphoneLevelPresentation(95, true).variant, "error");
+});
+
+test("measures the same PCM stream sent to live transcription", () => {
+  assert.equal(pcmInputLevel(new Int16Array(1_600)), 0);
+  const quiet = Int16Array.from({ length: 1_600 }, (_value, index) => Math.round(Math.sin(index / 11) * 90));
+  const usable = Int16Array.from({ length: 1_600 }, (_value, index) => Math.round(Math.sin(index / 11) * 600));
+  const loud = Int16Array.from({ length: 1_600 }, (_value, index) => Math.round(Math.sin(index / 11) * 30_000));
+  assert.ok(pcmInputLevel(quiet) < 20);
+  assert.ok(pcmInputLevel(usable) >= 20 && pcmInputLevel(usable) <= 90);
+  assert.ok(pcmInputLevel(loud) > 90);
+  assert.equal(pcmInputLevel(usable.buffer), pcmInputLevel(usable));
 });
 
 test("resumes a suspended audio context before streaming PCM", async () => {

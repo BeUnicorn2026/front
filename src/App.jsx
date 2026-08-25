@@ -883,7 +883,7 @@ function RecordingFooter({ recording, compact }) {
               </Stack>
             </Stack>
             <Stack gap={1} width={compact ? "100%" : 180}>
-              <ProgressBar label="마이크 입력 레벨" value={recording.audioLevel} isLabelHidden variant={microphoneLevel.variant} marks={recording.isRecording ? [{ value: 10, label: "적정 입력 시작" }, { value: 80, label: "과입력 시작" }] : undefined} />
+              <ProgressBar label="마이크 입력 레벨" value={recording.audioLevel} isLabelHidden variant={microphoneLevel.variant} marks={recording.isRecording ? [{ value: 20, label: "적정 입력 시작" }, { value: 90, label: "과입력 시작" }] : undefined} />
               <Text type="supporting" color="secondary">{microphoneLevel.label}</Text>
             </Stack>
             <Selector

@@ -184,9 +184,22 @@ export function microphoneLevelPresentation(level, isRecording) {
   if (!isRecording) return { label: "말할 때 입력 레벨을 확인합니다", variant: "neutral" };
   const value = Math.max(0, Math.min(100, Number(level) || 0));
   if (value <= 2) return { label: "말소리를 기다리는 중", variant: "neutral" };
-  if (value < 10) return { label: "입력이 작아요 · 마이크를 가까이", variant: "warning" };
-  if (value > 80) return { label: "입력이 너무 커요 · 조금 멀리", variant: "error" };
+  if (value < 20) return { label: "입력이 작아요 · 마이크를 가까이", variant: "warning" };
+  if (value > 90) return { label: "입력이 너무 커요 · 조금 멀리", variant: "error" };
   return { label: "마이크 입력 적정", variant: "success" };
+}
+
+export function pcmInputLevel(buffer) {
+  const samples = buffer instanceof Int16Array
+    ? buffer
+    : buffer instanceof ArrayBuffer ? new Int16Array(buffer) : new Int16Array();
+  if (!samples.length) return 0;
+  let squaredTotal = 0;
+  for (const sample of samples) squaredTotal += (sample / 32768) ** 2;
+  const rms = Math.sqrt(squaredTotal / samples.length);
+  if (!rms) return 0;
+  const dbfs = 20 * Math.log10(rms);
+  return Math.max(0, Math.min(100, Math.round((dbfs + 60) / 48 * 100)));
 }
 
 export async function ensureAudioContextRunning(context) {
@@ -225,10 +238,8 @@ export function useRecording() {
   const mediaRecorderRef = useRef(null);
   const pcmContextRef = useRef(null);
   const pcmNodeRef = useRef(null);
-  const monitorContextRef = useRef(null);
   const socketRef = useRef(null);
   const timerRef = useRef(null);
-  const animationRef = useRef(null);
   const chunksRef = useRef([]);
   const committedRef = useRef([]);
   const recordingRef = useRef(false);
@@ -312,10 +323,6 @@ export function useRecording() {
     pcmNodeRef.current = null;
     pcmContextRef.current?.close().catch(() => undefined);
     pcmContextRef.current = null;
-    monitorContextRef.current?.close().catch(() => undefined);
-    monitorContextRef.current = null;
-    if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    animationRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -493,35 +500,15 @@ export function useRecording() {
     pcmNodeRef.current = processor;
     const muted = context.createGain();
     muted.gain.value = 0;
+    let smoothedLevel = 0;
     processor.port.onmessage = ({ data }) => {
+      const measuredLevel = pcmInputLevel(data);
+      smoothedLevel = smoothedLevel * 0.7 + measuredLevel * 0.3;
+      setAudioLevel(Math.round(smoothedLevel));
       if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(data);
     };
     source.connect(processor).connect(muted).connect(context.destination);
     await ensureAudioContextRunning(context);
-  }, []);
-
-  const startLevelMonitor = useCallback((stream) => {
-    const context = new AudioContext();
-    monitorContextRef.current = context;
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 128;
-    context.createMediaStreamSource(stream).connect(analyser);
-    const values = new Uint8Array(analyser.frequencyBinCount);
-    let previousUpdate = 0;
-    let smoothedLevel = 0;
-    const render = (time) => {
-      analyser.getByteFrequencyData(values);
-      if (time - previousUpdate > 90) {
-        const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-        const measuredLevel = Math.min(100, average * 1.4);
-        smoothedLevel = smoothedLevel * 0.7 + measuredLevel * 0.3;
-        setAudioLevel(Math.round(smoothedLevel));
-        previousUpdate = time;
-      }
-      animationRef.current = requestAnimationFrame(render);
-    };
-    animationRef.current = requestAnimationFrame(render);
-    context.resume().catch(() => undefined);
   }, []);
 
   const submitAudio = useCallback(async (blob, filename) => {
@@ -647,7 +634,6 @@ export function useRecording() {
       if (socketDisconnectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
         throw new Error("실시간 연결이 종료되었습니다. 현재 회의를 중단 기록으로 저장합니다.");
       }
-      startLevelMonitor(stream);
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
@@ -695,7 +681,7 @@ export function useRecording() {
       setStatus("연결하지 못했어요");
       setNotice(recordingStartErrorMessage(error));
     }
-  }, [cleanupCapture, finalizeRecording, openLiveSocket, refreshAudioInputs, saveActiveMeeting, selectedAudioInputId, services.deepgram, speakers.length, startLevelMonitor, startPcmStream, upsertMeeting]);
+  }, [cleanupCapture, finalizeRecording, openLiveSocket, refreshAudioInputs, saveActiveMeeting, selectedAudioInputId, services.deepgram, speakers.length, startPcmStream, upsertMeeting]);
 
   const stop = useCallback(() => {
     if (!recordingRef.current) return;
