@@ -71,6 +71,14 @@ test("room bind hydrates persisted segments and carries the same meeting ID into
   assert.match(recordingSource, /parameters\.set\("meetingId", meetingId\)/);
 });
 
+test("entering a live room automatically starts microphone capture once", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  assert.match(meetingPage, /const automaticRecordingAttemptRef = useRef\(false\)/);
+  assert.match(meetingPage, /automaticRecordingAttemptRef\.current = true/);
+  assert.match(meetingPage, /void recording\.start\(\{ roomId: room\.id \}\)/);
+  assert.match(meetingPage, /readOnly \|\| !room\?\.id \|\| recording\.roomClosed/);
+});
+
 test("room closure is presented as terminal room state rather than a generic interruption", () => {
   assert.match(recordingSource, /const roomClosure = roomSocketClosure\(event, roomIdRef\.current\)/);
   assert.match(recordingSource, /reject\(roomClosure \|\| new Error/);

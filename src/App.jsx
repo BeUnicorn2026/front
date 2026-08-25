@@ -625,7 +625,7 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectTe
 }
 
 function IntelligencePanel({
-  terms, actions, roles, onEvidence, onExplain, explanations, onAnswer, busyTerm, busyAnswer
+  terms, actions, roles, introduction, onEvidence, onExplain, explanations, onAnswer, busyTerm, busyAnswer
 }) {
   const [openedTerms, setOpenedTerms] = useState(() => new Set());
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -641,7 +641,7 @@ function IntelligencePanel({
           <Heading level={2}>내 이해 패널</Heading>
           <Badge variant="neutral" label={terms.length + actions.length} />
         </Stack>
-        <Text type="supporting">{roles.length ? `${roles.join(" · ")} 관점으로 설명 중` : "일반 업무 관점으로 설명 중"}</Text>
+        <Text type="supporting">{introduction ? "내 자기소개를 반영해 설명 중" : "일반 업무 관점으로 설명 중"}</Text>
       </Stack>
       <TabList value={panelTab} onChange={setPanelTab} layout="fill" size="sm" hasDivider>
         <Tab value="terms" label={`용어 ${terms.length}`} />
@@ -688,6 +688,12 @@ function IntelligencePanel({
                             <Text as="p">{generated.explanation}</Text>
                             {generated.analogy && <Text color="secondary">비유 · {generated.analogy}</Text>}
                           </Stack>
+                          {generated.rewrittenContext && (
+                            <Stack gap={1}>
+                              <Text weight="semibold">문맥을 쉽게 풀어 쓴 문장</Text>
+                              <Text as="p" color="secondary">{generated.rewrittenContext}</Text>
+                            </Stack>
+                          )}
                           <RadioList
                             label={generated.checkQuestion}
                             description="한 번 선택하면 결과가 내 이해 상태에 반영됩니다."
@@ -1038,7 +1044,7 @@ function RecordingFooter({ recording, compact, billing, onOpenBilling }) {
             <Button
               variant="primary"
               size="lg"
-              label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : identifiesSpeakers ? "화자 식별 시작" : "STT 테스트 시작"}
+              label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
               icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
               onClick={recording.isRecording ? recording.stop : meetingLimitReached ? onOpenBilling : recording.start}
               isLoading={recording.isBusy}
@@ -1217,7 +1223,7 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
       const refreshed = await apiRequest(`/api/meetings/${meeting.id}/intelligence`);
       setIntelligence(refreshed.intelligence);
       await onVocabularyRefresh();
-      setIntelligenceNotice(result.cached ? "저장된 맞춤 해설을 불러왔습니다." : "내 역할과 회의 문맥에 맞춘 쉬운 설명을 만들었습니다.");
+      setIntelligenceNotice(result.cached ? "저장된 맞춤 해설을 불러왔습니다." : "내 자기소개와 회의 문맥에 맞춰 문장을 쉽게 풀어 썼습니다.");
     } catch (error) {
       setIntelligenceNotice(error.message);
     } finally {
@@ -1264,6 +1270,7 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
       terms={terms}
       actions={actions}
       roles={context.user.vocabulary?.roles || []}
+      introduction={context.user.introduction || ""}
       onEvidence={recordKnowledgeEvidence}
       onExplain={requestKnowledgeExplanation}
       explanations={knowledgeExplanations}
@@ -1604,6 +1611,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
+  const automaticRecordingAttemptRef = useRef(false);
   const displayedSegments = recording.segments;
   const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id, readOnly);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
@@ -1645,6 +1653,17 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
     if (meetingLimitReached) return onOpenBilling();
     return recording.start({ roomId: room?.id || "" });
   };
+
+  useEffect(() => {
+    automaticRecordingAttemptRef.current = false;
+  }, [room?.id]);
+
+  useEffect(() => {
+    if (automaticRecordingAttemptRef.current || readOnly || !room?.id || recording.roomClosed) return;
+    if (!recording.services.deepgram || recording.isRecording || recording.isBusy || meetingLimitReached) return;
+    automaticRecordingAttemptRef.current = true;
+    void recording.start({ roomId: room.id });
+  }, [meetingLimitReached, readOnly, recording.isBusy, recording.isRecording, recording.roomClosed, recording.services.deepgram, recording.start, room?.id]);
 
   const participantControl = (
     <Stack
