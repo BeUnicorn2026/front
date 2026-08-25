@@ -907,9 +907,10 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
   );
 }
 
-function RecordingFooter({ recording, compact }) {
+function RecordingFooter({ recording, compact, billing, onOpenBilling }) {
   const identifiesSpeakers = recording.mode === "speaker";
   const microphoneLevel = microphoneLevelPresentation(recording.audioLevel, recording.isRecording);
+  const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   return (
     <LayoutFooter hasDivider label="녹음 컨트롤">
       <Section variant="muted" padding={3}>
@@ -960,16 +961,16 @@ function RecordingFooter({ recording, compact }) {
               placeholder="파일에서 전사"
               isLabelHidden
               isLoading={recording.isBusy && !recording.isRecording}
-              isDisabled={recording.isRecording || !recording.services.openai}
-              disabledMessage={recording.isRecording ? "기록 중에는 파일을 올릴 수 없습니다." : "서버에 OpenAI 전사 키가 설정되어 있지 않습니다."}
+              isDisabled={recording.isRecording || !recording.services.openai || meetingLimitReached}
+              disabledMessage={recording.isRecording ? "기록 중에는 파일을 올릴 수 없습니다." : meetingLimitReached ? "현재 플랜의 회의 횟수를 모두 사용했습니다." : "서버에 OpenAI 전사 키가 설정되어 있지 않습니다."}
               width={compact ? "100%" : 220}
             />}
             <Button
               variant="primary"
               size="lg"
-              label={recording.isRecording ? "기록 중지" : identifiesSpeakers ? "화자 식별 시작" : "STT 테스트 시작"}
-              icon={<Icon icon={recording.isRecording ? "stop" : "microphone"} />}
-              onClick={recording.isRecording ? recording.stop : recording.start}
+              label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : identifiesSpeakers ? "화자 식별 시작" : "STT 테스트 시작"}
+              icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
+              onClick={recording.isRecording ? recording.stop : meetingLimitReached ? onOpenBilling : recording.start}
               isLoading={recording.isBusy}
               width={compact ? "100%" : undefined}
             />
@@ -980,7 +981,7 @@ function RecordingFooter({ recording, compact }) {
   );
 }
 
-function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh }) {
+function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh, billing, onOpenBilling }) {
   const { compact, desktop } = useViewport();
   const [view, setView] = useState("outline");
   const [isInsightOpen, setInsightOpen] = useState(false);
@@ -1230,6 +1231,14 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
               />
             )}
             <Feedback key={recording.mode} message={visibleNotice} status="warning" onDismiss={() => recording.setNotice("")} />
+            {billing?.usage?.meetings?.allowed === false && (
+              <Banner
+                status="warning"
+                title={`${billing.subscription.planId} 플랜의 현재 기간 회의 횟수를 모두 사용했습니다.`}
+                description="기존 회의 문서는 계속 열람할 수 있으며 새 녹음과 파일 전사는 다음 기간 또는 플랜 변경 후 사용할 수 있습니다."
+                endContent={<Button label="플랜 보기" variant="secondary" size="sm" onClick={onOpenBilling} />}
+              />
+            )}
             <Feedback message={intelligenceNotice} status={intelligence ? "success" : "warning"} onDismiss={() => setIntelligenceNotice("")} />
             {recording.activeMeeting?.status !== "recording" && displayedSegments.length > 0 && !intelligence && (
               <Banner
@@ -1302,7 +1311,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
         </LayoutContent>
         )}
         end={desktop ? <LayoutPanel width="var(--layout-document-panel-width)" hasDivider padding={4} label="개인화 용어 및 액션" role="complementary">{insight}</LayoutPanel> : undefined}
-        footer={<RecordingFooter recording={recording} compact={compact} />}
+        footer={<RecordingFooter recording={recording} compact={compact} billing={billing} onOpenBilling={onOpenBilling} />}
       />
       <Dialog isOpen={isInsightOpen} onOpenChange={setInsightOpen} variant={compact ? "fullscreen" : "standard"} width={520} maxHeight="90vh">
         <Layout
@@ -1486,7 +1495,7 @@ function DictionaryPage({ terms, onRefresh }) {
   );
 }
 
-function SettingsPage({ context, recording }) {
+function SettingsPage({ context, recording, billing, onOpenBilling }) {
   const { compact, desktop } = useViewport();
   const [members, setMembers] = useState([]);
   const [speakerName, setSpeakerName] = useState("");
@@ -1496,6 +1505,7 @@ function SettingsPage({ context, recording }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [sampleTarget, setSampleTarget] = useState(null);
   const [sampleFile, setSampleFile] = useState(null);
+  const speakerLimitReached = Boolean(billing?.usage?.speakers && billing.usage.speakers.remaining <= 0);
   const [identificationFile, setIdentificationFile] = useState(null);
   const [independentRecording, setIndependentRecording] = useState(false);
   const [expectedSpeakerId, setExpectedSpeakerId] = useState("");
@@ -1643,6 +1653,7 @@ function SettingsPage({ context, recording }) {
                   <Text color="secondary">한 사람만 말하는 잡음 없는 15~30초 MP3/WAV를 권장합니다. 여러 음성 구간의 일관성을 검증해 조직 전용 프로필로 저장합니다.</Text>
                 </Stack>
                 {!recording.services.biometricEncryption && <Banner status="warning" title="생체정보 저장 암호화가 꺼져 있습니다." description="개발 환경에서만 허용됩니다. 배포 전 VOICE_BIOMETRIC_KEY를 설정하고 기존 평문 프로필을 마이그레이션해야 합니다." />}
+                {speakerLimitReached && <Banner status="warning" title="등록 화자 한도에 도달했습니다." description={`${billing.subscription.planId} 플랜은 화자를 ${billing.usage.speakers.limit}명까지 등록할 수 있습니다.`} endContent={<Button label="플랜 보기" variant="secondary" size="sm" onClick={onOpenBilling} />} />}
                 <Card padding={4}>
                   <Stack as="form" onSubmit={enroll} gap={3}>
                     <FormLayout direction={compact ? "vertical" : "horizontal"} defaultOptionality="required">
@@ -1650,7 +1661,7 @@ function SettingsPage({ context, recording }) {
                       <FileInput label="참조 음성" value={speakerFile} onChange={setSpeakerFile} accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" isRequired width="100%" />
                     </FormLayout>
                     <Stack direction="horizontal" justify="end">
-                      <Button type="submit" variant="primary" label="목소리 등록" isLoading={busy} />
+                      <Button type="submit" variant="primary" label="목소리 등록" isLoading={busy} isDisabled={speakerLimitReached} />
                     </Stack>
                   </Stack>
                 </Card>
@@ -1840,7 +1851,7 @@ function Workspace({ context, onContextChange, onLogout }) {
       .then((result) => { if (!cancelled) setBilling(result); })
       .catch(() => { if (!cancelled) setBilling(null); });
     return () => { cancelled = true; };
-  }, [context.organization.id]);
+  }, [context.organization.id, recording.meetings.length, recording.speakers.length]);
 
   useEffect(() => () => window.clearTimeout(navigationCollapseTimerRef.current), []);
 
@@ -1991,8 +2002,8 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
-  else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
+  else if (page === "settings") content = <SettingsPage context={context} recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} />;
+  else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} billing={billing} onOpenBilling={() => navigateTo("billing")} />;
 
   return <AppShell sideNav={navigation} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }
