@@ -192,6 +192,61 @@ export function buildMindMapLayout(blocks, selectedId, { maximumVisible = 18 } =
   };
 }
 
+export function buildStructureDiagramLayout(blocks) {
+  const source = Array.isArray(blocks) ? blocks : [];
+  const width = 1000;
+  const nodeWidth = 260;
+  const nodeHeight = 100;
+  const columns = 3;
+  const columnCenters = [160, 500, 840];
+  const firstRowY = 190;
+  const rowPitch = 140;
+  const nodes = source.map((block, index) => {
+    const row = Math.floor(index / columns);
+    const offset = index % columns;
+    const column = row % 2 === 0 ? offset : columns - 1 - offset;
+    return {
+      ...block,
+      index,
+      row,
+      column,
+      x: columnCenters[column],
+      y: firstRowY + row * rowPitch,
+      labelLines: wrapMindMapLabel(block.label, 22)
+    };
+  });
+  const edges = nodes.map((node, index) => {
+    if (index === 0) {
+      return {
+        id: `entry-${node.id}`,
+        path: `M ${width / 2} 104 C ${width / 2} 140, ${node.x} 140, ${node.x} ${node.y - nodeHeight / 2}`
+      };
+    }
+    const previous = nodes[index - 1];
+    if (previous.row === node.row) {
+      const direction = Math.sign(node.x - previous.x);
+      return {
+        id: `${previous.id}-${node.id}`,
+        path: `M ${previous.x + direction * nodeWidth / 2} ${previous.y} L ${node.x - direction * nodeWidth / 2} ${node.y}`
+      };
+    }
+    return {
+      id: `${previous.id}-${node.id}`,
+      path: `M ${previous.x} ${previous.y + nodeHeight / 2} L ${node.x} ${node.y - nodeHeight / 2}`
+    };
+  });
+  const rows = Math.ceil(nodes.length / columns);
+  return {
+    columns,
+    edges,
+    height: Math.max(360, firstRowY + Math.max(0, rows - 1) * rowPitch + nodeHeight / 2 + 54),
+    nodeHeight,
+    nodeWidth,
+    nodes,
+    width
+  };
+}
+
 export function deriveTerms(segments, knownTerms = [], catalog = []) {
   const known = new Set(knownTerms.map((term) => term.toLocaleLowerCase()));
   const found = new Map();

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -63,6 +63,24 @@ test("keeps mind map labels readable in no more than two lines", () => {
   assert.equal(lines.length, 2);
   assert.ok(lines.every((line) => line.length <= 12));
   assert.ok(lines[1].endsWith("…"));
+});
+
+test("lays out the structure diagram as a non-overlapping chronological snake", () => {
+  const blocks = Array.from({ length: 8 }, (_, index) => ({
+    id: `topic-${index}`, label: `${index + 1}번째 실제 주제`, start: index * 10, segments: [{ text: "근거" }]
+  }));
+  const layout = buildStructureDiagramLayout(blocks);
+  assert.equal(layout.nodes.length, blocks.length);
+  assert.equal(layout.edges.length, blocks.length);
+  assert.deepEqual(layout.nodes.slice(0, 6).map(({ column }) => column), [0, 1, 2, 2, 1, 0]);
+  for (let leftIndex = 0; leftIndex < layout.nodes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < layout.nodes.length; rightIndex += 1) {
+      const left = layout.nodes[leftIndex];
+      const right = layout.nodes[rightIndex];
+      assert.ok(Math.abs(left.x - right.x) >= layout.nodeWidth || Math.abs(left.y - right.y) >= layout.nodeHeight);
+    }
+  }
+  assert.ok(layout.height > layout.nodes.at(-1).y + layout.nodeHeight / 2);
 });
 
 test("live action preview assigns only evidence-backed owners and due dates", () => {

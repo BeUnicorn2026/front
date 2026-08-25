@@ -32,7 +32,7 @@ import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiEndpoint, apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks,
+  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
@@ -727,42 +727,89 @@ function TopicEvidence({ block }) {
   );
 }
 
-function StructureDiagram({ blocks, selectedId, onSelect, isRecording }) {
+function StructureDiagram({ blocks, selectedId, onSelect, isRecording, compact }) {
+  const nodeRefs = useRef(new Map());
   if (!blocks.length) {
     return <Banner status="info" title="아직 구조화할 발화가 없습니다." description="녹음을 시작하면 실제 대화 순서대로 구간이 만들어집니다." />;
   }
+  const layout = buildStructureDiagramLayout(blocks);
+  const selectedIndex = Math.max(0, blocks.findIndex(({ id }) => id === selectedId));
+  const focusNode = (targetIndex) => {
+    const target = blocks[targetIndex];
+    if (!target) return;
+    onSelect(target.id);
+    window.requestAnimationFrame(() => nodeRefs.current.get(target.id)?.focus());
+  };
   return (
     <Stack gap={4}>
-      <Card padding={4} style={{ background: "var(--brand-ink)", color: "var(--brand-cream)" }}>
-        <Stack direction="horizontal" gap={3} align="center" justify="between">
-          <Stack direction="horizontal" gap={3} align="center">
-            <Icon icon="viewColumns" color="inherit" />
-            <Stack gap={0.5}>
-              <Heading level={2} color="inherit">회의 구조</Heading>
-              <Text type="supporting" color="inherit">주제 {blocks.length}개 · 실제 발화 {blocks.reduce((sum, block) => sum + block.segments.length, 0)}개</Text>
-            </Stack>
-          </Stack>
-          <Text type="code" color="inherit">{formatTime(blocks[0].start)}</Text>
+      <Stack direction="horizontal" gap={3} align="center" justify="between" wrap="wrap">
+        <Stack gap={0.5}>
+          <Heading level={2}>시간 흐름 구조도</Heading>
+          <Text color="secondary">주제 {blocks.length}개 · 실제 발화 {blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 · 화살표 순서로 읽습니다.</Text>
         </Stack>
+        <Stack direction="horizontal" gap={2}>
+          <Button label="이전 주제" variant="secondary" size="sm" isDisabled={selectedIndex <= 0} onClick={() => focusNode(selectedIndex - 1)} />
+          <Button label="다음 주제" variant="secondary" size="sm" isDisabled={selectedIndex >= blocks.length - 1} onClick={() => focusNode(selectedIndex + 1)} />
+        </Stack>
+      </Stack>
+      <Card variant="muted" padding={2} style={{ overflowX: "auto" }}>
+        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} width={compact ? 760 : "100%"} height={compact ? Math.round(layout.height * 0.76) : layout.height} role="group" aria-label={`${blocks.length}개 실제 회의 주제의 시간 흐름 구조도`}>
+          <title>실제 발화 순서로 구성한 회의 구조도</title>
+          <defs>
+            <marker id="structure-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-border-emphasized)" />
+            </marker>
+          </defs>
+          <g>
+            <rect x="410" y="34" width="180" height="70" rx="16" fill="var(--brand-ink)" />
+            <text x="500" y="64" textAnchor="middle" fill="var(--brand-cream)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">회의 시작</text>
+            <text x="500" y="87" textAnchor="middle" fill="var(--brand-cream)" fontSize="var(--font-size-sm)">{formatTime(blocks[0].start)} · {new Set(blocks.flatMap(({ speakers }) => speakers || [])).size}명 참여</text>
+          </g>
+          {layout.edges.map((edge) => <path key={edge.id} d={edge.path} fill="none" stroke="var(--color-border-emphasized)" strokeWidth="3" markerEnd="url(#structure-arrow)" />)}
+          {layout.nodes.map((node) => {
+            const selected = node.id === selectedId;
+            const live = isRecording && node.index === blocks.length - 1;
+            return (
+              <g
+                key={node.id}
+                ref={(element) => {
+                  if (element) nodeRefs.current.set(node.id, element);
+                  else nodeRefs.current.delete(node.id);
+                }}
+                role="button"
+                tabIndex={selected ? 0 : -1}
+                cursor="pointer"
+                aria-label={`${node.index + 1}번째 주제 ${node.label}, ${formatTime(node.start)}, 발화 ${node.segments.length}개`}
+                aria-pressed={selected}
+                onClick={() => onSelect(node.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(node.id);
+                  }
+                  if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    focusNode(Math.min(blocks.length - 1, node.index + 1));
+                  }
+                  if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    focusNode(Math.max(0, node.index - 1));
+                  }
+                }}
+              >
+                <title>{node.label}</title>
+                <rect x={node.x - layout.nodeWidth / 2} y={node.y - layout.nodeHeight / 2} width={layout.nodeWidth} height={layout.nodeHeight} rx="16" fill="var(--color-background-card)" stroke={live || selected ? "var(--color-accent)" : "var(--color-border)"} strokeWidth={live ? "5" : selected ? "4" : "2"} />
+                <circle cx={node.x - layout.nodeWidth / 2 + 24} cy={node.y - layout.nodeHeight / 2 + 24} r="14" fill={live ? "var(--color-accent)" : "var(--color-background-muted)"} />
+                <text x={node.x - layout.nodeWidth / 2 + 24} y={node.y - layout.nodeHeight / 2 + 29} textAnchor="middle" fill={live ? "var(--color-on-accent)" : "var(--color-text-primary)"} fontSize="var(--font-size-sm)" fontWeight="var(--font-weight-semibold)">{node.index + 1}</text>
+                <text x={node.x} y={node.labelLines.length === 1 ? node.y - 12 : node.y - 22} textAnchor="middle" fill="var(--color-text-primary)" fontSize="var(--font-size-base)" fontWeight="var(--font-weight-semibold)">
+                  {node.labelLines.map((line, lineIndex) => <tspan key={`${node.id}-line-${lineIndex}`} x={node.x} dy={lineIndex === 0 ? 0 : 18}>{line}</tspan>)}
+                </text>
+                <text x={node.x} y={node.y + 31} textAnchor="middle" fill="var(--color-text-secondary)" fontSize="var(--font-size-sm)">{live ? "지금 이야기 중" : formatTime(node.start)} · {node.segments.length}개 발화</text>
+              </g>
+            );
+          })}
+        </svg>
       </Card>
-      <List hasDividers density="spacious" aria-label="실제 발화 기반 회의 구조">
-        {blocks.map((block, index) => (
-          <ListItem
-            key={block.id}
-            label={`${index + 1} · ${block.label}`}
-            description={block.summary || block.segments.slice(0, 2).map(({ text }) => text).join(" · ")}
-            startContent={<StatusDot variant={isRecording && index === blocks.length - 1 ? "accent" : "success"} label={isRecording && index === blocks.length - 1 ? "지금 이야기 중" : "정리된 주제"} isPulsing={isRecording && index === blocks.length - 1} />}
-            endContent={(
-              <Stack direction="horizontal" gap={2} align="center">
-                <Token label={isRecording && index === blocks.length - 1 ? "지금 주제" : selectedId === block.id ? "선택됨" : "정리됨"} color={isRecording && index === blocks.length - 1 ? "teal" : selectedId === block.id ? "yellow" : "green"} size="sm" />
-                <Text type="code" color="secondary">{formatTime(block.start)}</Text>
-              </Stack>
-            )}
-            isSelected={selectedId === block.id}
-            onClick={() => onSelect(block.id)}
-          />
-        ))}
-      </List>
       <TopicEvidence block={blocks.find(({ id }) => id === selectedId)} />
     </Stack>
   );
@@ -1236,7 +1283,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                 )}
               </Stack>
             </Stack>
-            {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={selectStructureBlock} isRecording={recording.isRecording} />}
+            {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={selectStructureBlock} isRecording={recording.isRecording} compact={compact} />}
             {view === "tree" && (
               <Stack gap={4}>
                 <Card variant="muted" padding={4}>
