@@ -4,7 +4,7 @@ import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
-  servicesAfterLiveEvent, speakerProbeCanBecomeSample
+  servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -192,6 +192,26 @@ test("resumes a suspended audio context before streaming PCM", async () => {
     ensureAudioContextRunning({ state: "closed", resume: async () => undefined }),
     /실시간 음성 처리를 시작하지 못했습니다/
   );
+});
+
+test("recovers a suspended live audio context and reports an unrecoverable closure", async () => {
+  let listener;
+  let failures = 0;
+  const context = {
+    state: "suspended",
+    addEventListener(_name, next) { listener = next; },
+    removeEventListener(_name, next) { if (listener === next) listener = null; },
+    async resume() { this.state = "running"; }
+  };
+  const dispose = watchAudioContext(context, () => { failures += 1; });
+  await listener();
+  assert.equal(context.state, "running");
+  assert.equal(failures, 0);
+  context.state = "closed";
+  await listener();
+  assert.equal(failures, 1);
+  dispose();
+  assert.equal(listener, null);
 });
 
 test("offers a verified probe as a profile sample only when it meets enrollment duration", () => {

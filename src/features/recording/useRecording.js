@@ -204,11 +204,33 @@ export function pcmInputLevel(buffer) {
 
 export async function ensureAudioContextRunning(context) {
   if (!context) throw new Error("오디오 처리 장치를 만들지 못했습니다.");
-  if (context.state === "suspended") await context.resume();
+  if (context.state !== "running" && context.state !== "closed") await context.resume();
   if (context.state !== "running") {
     throw new Error("브라우저가 실시간 음성 처리를 시작하지 못했습니다. 페이지를 활성화한 뒤 다시 시도해 주세요.");
   }
   return context;
+}
+
+export function watchAudioContext(context, onFailure) {
+  if (!context?.addEventListener) return () => undefined;
+  let recovering = false;
+  let disposed = false;
+  const handleStateChange = async () => {
+    if (disposed || recovering || context.state === "running") return;
+    recovering = true;
+    try {
+      await ensureAudioContextRunning(context);
+    } catch (error) {
+      if (!disposed) onFailure?.(error);
+    } finally {
+      recovering = false;
+    }
+  };
+  context.addEventListener("statechange", handleStateChange);
+  return () => {
+    disposed = true;
+    context.removeEventListener("statechange", handleStateChange);
+  };
 }
 
 export function speakerProbeCanBecomeSample(identification) {
@@ -238,6 +260,7 @@ export function useRecording() {
   const mediaRecorderRef = useRef(null);
   const pcmContextRef = useRef(null);
   const pcmNodeRef = useRef(null);
+  const pcmContextWatchCleanupRef = useRef(null);
   const socketRef = useRef(null);
   const timerRef = useRef(null);
   const chunksRef = useRef([]);
@@ -321,6 +344,8 @@ export function useRecording() {
     mediaStreamRef.current = null;
     pcmNodeRef.current?.disconnect();
     pcmNodeRef.current = null;
+    pcmContextWatchCleanupRef.current?.();
+    pcmContextWatchCleanupRef.current = null;
     pcmContextRef.current?.close().catch(() => undefined);
     pcmContextRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
@@ -672,6 +697,17 @@ export function useRecording() {
       setIsRecording(true);
       setIsBusy(false);
       setStatus("녹음 중 · 첫 발화 대기");
+      pcmContextWatchCleanupRef.current = watchAudioContext(pcmContextRef.current, (error) => {
+        if (!recordingRef.current) return;
+        interruptedRef.current = true;
+        recordingRef.current = false;
+        setIsRecording(false);
+        setIsBusy(true);
+        setStatus("오디오 처리 중단 · 기록 보존 중");
+        setNotice(error.message);
+        if (recorder.state === "recording") recorder.stop();
+        else finalizeRecording();
+      });
     } catch (error) {
       cleanupCapture();
       if (createdMeeting) {
