@@ -36,11 +36,6 @@ for (const route of ["/record", "/documents", "/dictionary", "/settings"]) {
     throw new Error(`${route}: Cloudflare 화면 경로에 HTML 재검증 정책이 없습니다.`);
   }
 }
-const redirects = await readFile(path.join(outputDirectory, "_redirects"), "utf8");
-if (!redirects.split(/\r?\n/).some((line) => line.trim() === "/* /index.html 200")) {
-  throw new Error("Cloudflare SPA fallback이 설정되지 않았습니다.");
-}
-
 const javascriptFiles = (await readdir(path.join(outputDirectory, "assets")))
   .filter((file) => file.endsWith(".js"));
 for (const file of javascriptFiles) {

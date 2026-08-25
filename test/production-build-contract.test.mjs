@@ -3,12 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("Cloudflare build publishes verifiable commit metadata and runs the bundle gate", async () => {
-  const [configuration, packageManifest, html, headers, redirects, workerConfiguration] = await Promise.all([
+  const [configuration, packageManifest, html, headers, workerConfiguration] = await Promise.all([
     readFile(new URL("../vite.config.mjs", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
     readFile(new URL("../index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/_headers", import.meta.url), "utf8"),
-    readFile(new URL("../public/_redirects", import.meta.url), "utf8"),
     readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8")
   ]);
   assert.match(configuration, /CF_PAGES_COMMIT_SHA/);
@@ -29,7 +28,6 @@ test("Cloudflare build publishes verifiable commit metadata and runs the bundle 
   assert.match(headers, /X-Frame-Options: DENY/);
   assert.match(headers, /Permissions-Policy:.*microphone=\(self\)/);
   assert.match(headers, /Cross-Origin-Opener-Policy: same-origin-allow-popups/);
-  assert.match(redirects, /^\/\* \/index\.html 200/m);
   assert.match(workerConfiguration, /"name": "beunicorn"/);
   assert.match(workerConfiguration, /"directory": "\.\/dist"/);
   assert.match(workerConfiguration, /"not_found_handling": "single-page-application"/);
