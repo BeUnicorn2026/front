@@ -1324,6 +1324,7 @@ function SettingsPage({ context, recording }) {
   const [sampleFile, setSampleFile] = useState(null);
   const [identificationFile, setIdentificationFile] = useState(null);
   const [independentRecording, setIndependentRecording] = useState(false);
+  const [expectedSpeakerId, setExpectedSpeakerId] = useState("");
   const [identification, setIdentification] = useState(null);
 
   useEffect(() => {
@@ -1392,6 +1393,7 @@ function SettingsPage({ context, recording }) {
       const form = new FormData();
       form.append("voice", identificationFile);
       form.append("independentRecording", independentRecording ? "true" : "false");
+      form.append("expectedSpeakerId", expectedSpeakerId);
       const result = await apiRequest("/api/speakers/identify", { method: "POST", body: form });
       setIdentification(result);
       if (result.speakerProfile) recording.updateSpeaker(result.speakerProfile);
@@ -1465,7 +1467,24 @@ function SettingsPage({ context, recording }) {
                       <Text color="secondary">프로필을 바꾸지 않고 최대 15초만 분석해 실시간 판정 기준을 미리 확인합니다.</Text>
                     </Stack>
                     <FormLayout direction={compact ? "vertical" : "horizontal"} defaultOptionality="required">
+                      <Selector
+                        label="실제 화자"
+                        value={expectedSpeakerId}
+                        onChange={(value) => { setExpectedSpeakerId(value); setIndependentRecording(false); setIdentification(null); }}
+                        options={[{ value: "", label: "선택하지 않음" }, ...recording.speakers.map((speaker) => ({ value: speaker.id, label: speaker.name }))]}
+                        width="100%"
+                      />
                       <FileInput label="테스트 음성" value={identificationFile} onChange={(file) => { setIdentificationFile(file); setIndependentRecording(false); setIdentification(null); }} accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" isRequired width="100%" />
+                    </FormLayout>
+                    <CheckboxInput
+                      label="등록에 사용하지 않은 별도 녹음입니다"
+                      description="다른 날·거리·마이크에서 녹음한 파일일 때만 선택하세요. 선택하지 않아도 식별 결과는 확인할 수 있습니다."
+                      value={independentRecording}
+                      onChange={setIndependentRecording}
+                      isDisabled={!identificationFile || !expectedSpeakerId}
+                      disabledMessage={!identificationFile ? "먼저 테스트 음성을 선택해 주세요." : "검증할 실제 화자를 선택해 주세요."}
+                    />
+                    <Stack direction="horizontal" justify="end">
                       <Button
                         type="submit"
                         variant="secondary"
@@ -1473,15 +1492,7 @@ function SettingsPage({ context, recording }) {
                         isLoading={busy && Boolean(identificationFile)}
                         isDisabled={!recording.speakers.length || !identificationFile}
                       />
-                    </FormLayout>
-                    <CheckboxInput
-                      label="등록에 사용하지 않은 별도 녹음입니다"
-                      description="다른 날·거리·마이크에서 녹음한 파일일 때만 선택하세요. 선택하지 않아도 식별 결과는 확인할 수 있습니다."
-                      value={independentRecording}
-                      onChange={setIndependentRecording}
-                      isDisabled={!identificationFile}
-                      disabledMessage="먼저 테스트 음성을 선택해 주세요."
-                    />
+                    </Stack>
                     {!recording.speakers.length && <Text type="supporting">테스트하려면 먼저 목소리를 한 명 이상 등록해 주세요.</Text>}
                     {identification && (
                       <Stack gap={3}>
