@@ -1365,7 +1365,6 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
   const [accountTab, setAccountTab] = useState("bio");
   const [dockUp, setDockUp] = useState(false);
   const [code, setCode] = useState(["A", "7", "K", "2"]);
-  const [codeTouched, setCodeTouched] = useState(false);
   const [motionPulse, setMotionPulse] = useState(false);
   const [profileIntroduction, setProfileIntroduction] = useState(() => window.localStorage.getItem(`voice-partition:bio:${context.user.id}`) || "");
   const [profileSaved, setProfileSaved] = useState(false);
@@ -1388,7 +1387,6 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
   const setCodeCharacter = (index, value) => {
     const character = String(value || "").replace(/[^a-zA-Z0-9]/g, "").slice(-1).toUpperCase();
     setCode((current) => current.map((item, itemIndex) => itemIndex === index ? character : item));
-    setCodeTouched(true);
     if (character && index < codeRefs.current.length - 1) codeRefs.current[index + 1]?.focus();
   };
   const handleCodeKey = (index, event) => {
@@ -1402,7 +1400,7 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
     window.clearTimeout(dockCollapseTimerRef.current);
     dockCollapseTimerRef.current = window.setTimeout(() => {
       const focusedCode = codeRefs.current.includes(document.activeElement);
-      if (!focusedCode && !codeTouched) setDockUp(false);
+      if (!focusedCode) setDockUp(false);
     }, 420);
   };
 
@@ -1443,7 +1441,7 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
       <Card variant="muted" padding={3}>
         <Stack gap={0.5}>
           <Text weight="medium">{context.user.email}</Text>
-          <Text type="supporting" color="secondary">{context.organization.name} · {billing?.subscription?.planId || "FREE"} 플랜</Text>
+          <Text type="supporting" color="secondary">{context.organization.name} 워크스페이스</Text>
         </Stack>
       </Card>
       <Stack direction="horizontal" gap={2}>
@@ -1455,28 +1453,6 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
 
   return (
     <Layout
-      header={(
-        <LayoutHeader height={64} hasDivider label="Voice Partition 홈 헤더">
-          <Toolbar
-            label="홈"
-            size="lg"
-            startContent={(
-              <Stack direction="horizontal" gap={2} align="center">
-                <Stack width="var(--spacing-6)" height="var(--spacing-6)" align="center" justify="center" style={{ background: "var(--brand-mint)", borderRadius: "var(--radius-element)", color: "var(--brand-ink)" }}>
-                  <Icon icon="microphone" color="inherit" label="Voice Partition" />
-                </Stack>
-                <Text type="label" weight="semibold">VOICE PARTITION</Text>
-              </Stack>
-            )}
-            endContent={(
-              <Stack direction="horizontal" gap={3} align="center">
-                {!compact && <Text type="supporting" color="secondary">{context.organization.name}</Text>}
-                <Avatar name={context.user.name} size="sm" />
-              </Stack>
-            )}
-          />
-        </LayoutHeader>
-      )}
       content={(
         <LayoutContent
           padding={0}
@@ -1485,10 +1461,10 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
             if (event.clientY > bounds.top + bounds.height * 0.7) {
               window.clearTimeout(dockCollapseTimerRef.current);
               setDockUp(true);
-            } else if (!codeTouched && !codeRefs.current.includes(document.activeElement)) scheduleDockCollapse();
+            } else if (!codeRefs.current.includes(document.activeElement)) scheduleDockCollapse();
           }}
           onPointerLeave={scheduleDockCollapse}
-          style={{ position: "relative", overflow: "hidden", background: "var(--color-background-body)" }}
+          style={{ position: "relative", overflow: "hidden", background: "var(--color-background-surface)" }}
         >
           <Center width="100%" height="100%" padding={compact ? 3 : 0} style={{ alignItems: "flex-start" }}>
             <Stack width="100%" maxWidth="calc(var(--spacing-10) * 15)" gap={5} paddingBlock={compact ? 2 : 8}>
@@ -1587,16 +1563,16 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
               position: "absolute",
               insetInlineStart: "50%",
               bottom: 0,
-              width: compact ? "calc(100% - var(--spacing-6))" : "calc(var(--spacing-10) * 15)",
-              marginInlineStart: compact ? "calc((100% - var(--spacing-6)) / -2)" : "calc(var(--spacing-10) * -7.5)",
+              width: compact ? "calc(100% - var(--spacing-6))" : "calc(var(--spacing-10) * 12)",
+              marginInlineStart: compact ? "calc((100% - var(--spacing-6)) / -2)" : "calc(var(--spacing-10) * -6)",
               borderEndStartRadius: 0,
               borderEndEndRadius: 0,
               boxShadow: "var(--shadow-high)",
-              transform: dockUp ? ready ? "translateY(calc(var(--spacing-1) * -1.5))" : "translateY(0)" : "translateY(46%)",
+              transform: dockUp ? "translateY(0)" : "translateY(46%)",
               transition: reducedMotion ? "none" : "transform var(--duration-slow) var(--motion-navigation-ease), box-shadow var(--duration-medium) ease"
             }}
           >
-            <Stack paddingInline={compact ? 3 : 6} paddingBlockStart={3} paddingBlockEnd={6} gap={3}>
+            <Stack paddingInline={compact ? 3 : 4} paddingBlockStart={3} paddingBlockEnd={4} gap={3}>
               <Stack align="center"><Stack width="var(--spacing-10)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} /></Stack>
               <Heading level={3}>방 코드</Heading>
               <Stack direction="horizontal" gap={3} align="center">
@@ -1614,18 +1590,18 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
                       onFocus={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
                       onBlur={scheduleDockCollapse}
                       width="100%"
-                      height="calc(var(--spacing-8) * 3 - var(--spacing-1))"
+                      height="calc(var(--spacing-10) + var(--spacing-4))"
                       style={{
                         minWidth: 0,
                         border: 0,
-                        borderRadius: "var(--radius-container)",
+                        borderRadius: "var(--radius-element)",
                         background: character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
                         boxShadow: index === nextCodeIndex && motionPulse
                           ? "inset 0 0 0 var(--spacing-0-5) var(--color-accent), 0 0 0 var(--spacing-1) var(--color-accent-muted)"
                           : `inset 0 0 0 var(--spacing-0-5) ${character ? "var(--color-accent)" : "var(--color-border)"}`,
                         color: "var(--color-text-primary)",
                         fontFamily: "var(--font-family-code)",
-                        fontSize: "var(--font-size-3xl)",
+                        fontSize: "var(--font-size-xl)",
                         fontWeight: "var(--font-weight-medium)",
                         textAlign: "center",
                         textTransform: "uppercase",
@@ -1637,29 +1613,6 @@ function DashboardPage({ context, onStart, onOpen, onLogout, recording }) {
                       <Stack height="var(--spacing-0-5)" style={{ borderRadius: "var(--radius-full)", background: character ? "var(--color-accent)" : "var(--color-border)", opacity: index === nextCodeIndex && motionPulse ? 0.55 : 1, transition: motion }} />
                     </Stack>
                   ))}
-                </Stack>
-                <Stack
-                  as="button"
-                  type="button"
-                  aria-label="방 입장"
-                  width="var(--spacing-10)"
-                  height="var(--spacing-10)"
-                  align="center"
-                  justify="center"
-                  onClick={() => ready && onStart(code.join(""))}
-                  style={{
-                    flex: "none",
-                    border: 0,
-                    borderRadius: "var(--radius-element)",
-                    background: ready ? "var(--color-accent)" : "var(--color-background-muted)",
-                    color: ready ? "var(--color-on-accent)" : "var(--color-text-disabled)",
-                    cursor: ready ? "pointer" : "default",
-                    opacity: ready ? 1 : 0.3,
-                    transform: ready && motionPulse ? "translateY(calc(var(--spacing-1) * -1))" : "translateY(0)",
-                    transition: motion
-                  }}
-                >
-                  <Text type="code" color="inherit" weight="semibold">⏎</Text>
                 </Stack>
               </Stack>
             </Stack>
@@ -2306,6 +2259,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} />;
   else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={() => navigateTo("home")} roomCode={roomCode} />;
 
+  if (page === "home") return <AppShell variant="surface" height="fill" contentPadding={0}>{content}</AppShell>;
   return <AppShell sideNav={navigation} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }
 
