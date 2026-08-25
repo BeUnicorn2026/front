@@ -1,9 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, autosaveRetryDelay, correctSpeakerCluster, mergeSegments,
+  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
+  correctSpeakerCluster, correctTranscriptSegment, mergeSegments,
   recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
+
+test("combines STT confidence independently from speaker similarity", () => {
+  const result = mergeSegments(
+    [{ speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "첫 문장", confidence: 0.9, transcriptConfidence: 0.8 }],
+    [{ speaker: "민수", sourceSpeaker: "0", start: 1.1, end: 2, text: "둘째", confidence: 0.7, transcriptConfidence: 0.6 }]
+  );
+  assert.equal(result[0].confidence, 0.9);
+  assert.ok(result[0].transcriptConfidence > 0.73 && result[0].transcriptConfidence < 0.74);
+});
+
+test("corrects transcript text and preserves it across final transcription", () => {
+  const corrected = correctTranscriptSegment(
+    [{ id: "one", speaker: "민수", start: 0, end: 2, text: "잘못된 문장", transcriptConfidence: 0.42 }],
+    { id: "one" }, "정확한 문장"
+  );
+  assert.equal(corrected[0].text, "정확한 문장");
+  assert.equal(corrected[0].transcriptCorrected, true);
+  assert.equal(corrected[0].transcriptConfidence, null);
+  const final = applyManualTranscriptCorrections(
+    [{ speaker: "민수", start: 0.1, end: 1.9, text: "재전사 문장", transcriptConfidence: 0.9 }],
+    [{ start: 0, end: 2, text: "정확한 문장" }]
+  );
+  assert.equal(final[0].text, "정확한 문장");
+  assert.equal(final[0].transcriptCorrected, true);
+});
 
 test("retroactively corrects earlier unknown segments from the same diarization cluster", () => {
   const committed = [

@@ -23,6 +23,7 @@ import { SideNav, SideNavHeading, SideNavItem, SideNavSection } from "@astryxdes
 import { Stack } from "@astryxdesign/core/Stack";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
@@ -494,63 +495,97 @@ function PageHeader({ title, endContent }) {
   );
 }
 
-function TranscriptList({ segments, speakers = [], onCorrectSpeaker, compact = false, mode = "speaker", termCatalog = [] }) {
+function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectText, compact = false, mode = "speaker", termCatalog = [] }) {
   const identifiesSpeakers = mode === "speaker";
+  const [editTarget, setEditTarget] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [editError, setEditError] = useState("");
+  const [isSavingEdit, setSavingEdit] = useState(false);
+  const closeEditor = () => {
+    if (isSavingEdit) return;
+    setEditTarget(null);
+    setEditText("");
+    setEditError("");
+  };
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    const value = editText.trim();
+    if (!value) return setEditError("전사 문장을 입력해 주세요.");
+    setSavingEdit(true);
+    setEditError("");
+    try {
+      await onCorrectText(editTarget, value);
+      setEditTarget(null);
+      setEditText("");
+    } catch (error) {
+      setEditError(error.message || "전사 수정을 저장하지 못했습니다.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
   return (
-    <List
-      hasDividers
-      density="spacious"
-      header={<Heading level={2}>{identifiesSpeakers ? "화자별 실시간 기록" : "실시간 STT 결과"}</Heading>}
-    >
-      {segments.length ? segments.map((segment, index) => {
-        const terms = matchingTerms(segment.text, termCatalog);
-        const controls = (
-          <Stack direction="horizontal" gap={2} align="center" wrap="wrap">
-            <Text type="code" color="secondary">{formatTime(segment.start)}</Text>
-            {segment.corrected && <Token label="직접 확인" color="teal" size="sm" />}
-            {segment.confidence != null && <Token label={`음성 유사도 ${Math.round(segment.confidence * 100)}%`} color={segment.confidence >= 0.78 ? "green" : "yellow"} size="sm" />}
-            {identifiesSpeakers && onCorrectSpeaker && !segment.pending && (
-              <Selector
-                label={`${segment.speaker} 화자 수정`}
-                isLabelHidden
-                size="sm"
-                variant="ghost"
-                value={segment.speaker}
-                onChange={(speaker) => onCorrectSpeaker(segment, speaker)}
-                options={[
-                  ...(!speakers.some(({ name }) => name === segment.speaker) ? [{ value: segment.speaker, label: segment.speaker }] : []),
-                  ...speakers.map(({ name }) => ({ value: name, label: name }))
-                ]}
-              />
-            )}
-          </Stack>
-        );
-        return (
-          <ListItem
-            key={`${segment.start}-${segment.speaker}-${index}`}
-            label={segment.speaker}
-            startContent={identifiesSpeakers ? <Avatar name={segment.speaker} size="md" /> : <Icon icon="microphone" color="accent" />}
-            endContent={compact ? undefined : controls}
-            description={(
-              <Stack gap={2}>
-                <Text as="p" color={segment.pending ? "secondary" : "primary"}>{segment.text}</Text>
-                {compact && controls}
-                {terms.length > 0 && (
-                  <Stack direction="horizontal" gap={1} wrap="wrap">
-                    {terms.map(({ term, isKnown }) => (
-                      <Token key={term} label={term} size="sm" color={isKnown ? "green" : "red"} />
-                    ))}
-                    {segment.pending && <Token label="인식 중" size="sm" />}
-                  </Stack>
-                )}
-              </Stack>
-            )}
-          />
-        );
-      }) : (
-        <ListItem label="첫 발화를 기다리는 중" description={identifiesSpeakers ? "녹음이 시작되면 등록된 이름과 발화가 여기에 나타납니다." : "녹음을 시작하면 중간 전사와 확정 전사가 실시간으로 나타납니다."} startContent={<StatusDot variant="accent" label="대기 중" isPulsing />} />
-      )}
-    </List>
+    <>
+      <List
+        hasDividers
+        density="spacious"
+        header={<Heading level={2}>{identifiesSpeakers ? "화자별 실시간 기록" : "실시간 STT 결과"}</Heading>}
+      >
+        {segments.length ? segments.map((segment, index) => {
+          const terms = matchingTerms(segment.text, termCatalog);
+          const controls = (
+            <Stack direction="horizontal" gap={2} align="center" wrap="wrap">
+              <Text type="code" color="secondary">{formatTime(segment.start)}</Text>
+              {segment.corrected && <Token label="화자 직접 확인" color="teal" size="sm" />}
+              {segment.transcriptCorrected && <Token label="문장 직접 수정" color="teal" size="sm" />}
+              {segment.confidence != null && <Token label={`음성 유사도 ${Math.round(segment.confidence * 100)}%`} color={segment.confidence >= 0.78 ? "green" : "yellow"} size="sm" />}
+              {segment.transcriptConfidence != null && <Token label={`STT 정확도 ${Math.round(segment.transcriptConfidence * 100)}%`} color={segment.transcriptConfidence >= 0.85 ? "green" : segment.transcriptConfidence >= 0.7 ? "yellow" : "red"} size="sm" />}
+              {identifiesSpeakers && onCorrectSpeaker && !segment.pending && (
+                <Selector
+                  label={`${segment.speaker} 화자 수정`}
+                  isLabelHidden
+                  size="sm"
+                  variant="ghost"
+                  value={segment.speaker}
+                  onChange={(speaker) => onCorrectSpeaker(segment, speaker)}
+                  options={[
+                    ...(!speakers.some(({ name }) => name === segment.speaker) ? [{ value: segment.speaker, label: segment.speaker }] : []),
+                    ...speakers.map(({ name }) => ({ value: name, label: name }))
+                  ]}
+                />
+              )}
+              {onCorrectText && !segment.pending && <Button label="문장 수정" variant="ghost" size="sm" onClick={() => { setEditTarget(segment); setEditText(segment.text); setEditError(""); }} />}
+            </Stack>
+          );
+          return (
+            <ListItem
+              key={`${segment.start}-${segment.speaker}-${index}`}
+              label={segment.speaker}
+              startContent={identifiesSpeakers ? <Avatar name={segment.speaker} size="md" /> : <Icon icon="microphone" color="accent" />}
+              endContent={compact ? undefined : controls}
+              description={(
+                <Stack gap={2}>
+                  <Text as="p" color={segment.pending ? "secondary" : "primary"}>{segment.text}</Text>
+                  {compact && controls}
+                  {terms.length > 0 && (
+                    <Stack direction="horizontal" gap={1} wrap="wrap">
+                      {terms.map(({ term, isKnown }) => <Token key={term} label={term} size="sm" color={isKnown ? "green" : "red"} />)}
+                      {segment.pending && <Token label="인식 중" size="sm" />}
+                    </Stack>
+                  )}
+                </Stack>
+              )}
+            />
+          );
+        }) : <ListItem label="첫 발화를 기다리는 중" description={identifiesSpeakers ? "녹음이 시작되면 등록된 이름과 발화가 여기에 나타납니다." : "녹음을 시작하면 중간 전사와 확정 전사가 실시간으로 나타납니다."} startContent={<StatusDot variant="accent" label="대기 중" isPulsing />} />}
+      </List>
+      <Dialog isOpen={Boolean(editTarget)} onOpenChange={(open) => !open && closeEditor()} purpose="required" width={520}>
+        <Layout
+          header={<DialogHeader title="전사 문장 수정" subtitle={`${editTarget?.speaker || "화자"} · ${formatTime(editTarget?.start || 0)}`} />}
+          content={<LayoutContent padding={4}><Stack as="form" id="transcript-edit-form" onSubmit={saveEdit} gap={3}><TextArea label="정확한 문장" value={editText} onChange={setEditText} rows={5} isRequired width="100%" status={editError ? { type: "error", message: editError } : undefined} /><Text type="supporting">수정 내용은 회의 문서와 이후 구조화 결과에 반영됩니다.</Text></Stack></LayoutContent>}
+          footer={<LayoutFooter hasDivider><Section padding={3}><Stack direction="horizontal" justify="end" gap={2}><Button label="취소" variant="secondary" onClick={closeEditor} /><Button type="submit" form="transcript-edit-form" label="수정 저장" variant="primary" isLoading={isSavingEdit} /></Stack></Section></LayoutFooter>}
+        />
+      </Dialog>
+    </>
   );
 }
 
@@ -1169,12 +1204,12 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                 </Card>
                 <TopicEvidence block={blocks.find(({ id }) => id === selectedBlockId)} />
                 <Section padding={0}>
-                  <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />
+                  <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} onCorrectText={recording.correctTranscript} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />
                 </Section>
               </Stack>
             )}
             {view === "mindmap" && <MeetingMindMap blocks={blocks} compact={compact} selectedId={selectedBlockId} onSelect={setSelectedBlockId} />}
-            {view === "transcript" && <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />}
+            {view === "transcript" && <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} onCorrectText={recording.correctTranscript} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />}
             {view === "overview" && <MeetingOverview segments={displayedSegments} mode={recording.mode} intelligence={intelligence} terms={terms} actions={actions} />}
           </Stack>
         </LayoutContent>

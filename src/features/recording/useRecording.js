@@ -18,6 +18,8 @@ export function mergeSegments(committed, incoming) {
     const sameCluster = previous?.sourceSpeaker == null || segment.sourceSpeaker == null
       || previous.sourceSpeaker === segment.sourceSpeaker;
     if (previous && previous.speaker === segment.speaker && sameCluster && Number(segment.start) - Number(previous.end) < 1.25) {
+      const previousTextLength = previous.text.length;
+      const incomingTextLength = segment.text.length;
       previous.text = `${previous.text} ${segment.text}`;
       previous.end = segment.end;
       if (segment.corrected) {
@@ -26,11 +28,53 @@ export function mergeSegments(committed, incoming) {
       } else if (!previous.corrected) {
         previous.confidence = Math.max(previous.confidence ?? 0, segment.confidence ?? 0) || null;
       }
+      if (previous.transcriptCorrected || segment.transcriptCorrected) {
+        previous.transcriptCorrected = true;
+        previous.transcriptConfidence = null;
+      } else if (previous.transcriptConfidence != null || segment.transcriptConfidence != null) {
+        const previousWeight = previous.transcriptConfidence == null ? 0 : previousTextLength;
+        const incomingWeight = segment.transcriptConfidence == null ? 0 : incomingTextLength;
+        previous.transcriptConfidence = (
+          (previous.transcriptConfidence || 0) * previousWeight
+          + (segment.transcriptConfidence || 0) * incomingWeight
+        ) / (previousWeight + incomingWeight);
+      }
     } else {
       next.push({ ...segment });
     }
   }
   return next;
+}
+
+export function correctTranscriptSegment(segments, target, text) {
+  const correctedText = String(text || "").trim();
+  if (!correctedText) return segments;
+  let changed = false;
+  return segments.map((segment) => {
+    const matches = !changed && (target?.id
+      ? segment.id === target.id
+      : segment.start === target?.start && segment.end === target?.end && segment.text === target?.text);
+    if (!matches) return segment;
+    changed = true;
+    return { ...segment, text: correctedText, transcriptCorrected: true, transcriptConfidence: null };
+  });
+}
+
+export function applyManualTranscriptCorrections(finalSegments, corrections) {
+  const entries = Array.isArray(corrections) ? corrections : [];
+  if (!entries.length) return finalSegments;
+  return finalSegments.map((segment) => {
+    const start = Number(segment.start) || 0;
+    const end = Math.max(start, Number(segment.end) || start);
+    const duration = Math.max(0.1, end - start);
+    const best = entries.map((correction) => ({
+      correction,
+      overlap: Math.max(0, Math.min(end, Number(correction.end) || 0) - Math.max(start, Number(correction.start) || 0))
+    })).sort((left, right) => right.overlap - left.overlap)[0];
+    return best?.overlap / duration >= 0.6
+      ? { ...segment, text: best.correction.text, transcriptCorrected: true, transcriptConfidence: null }
+      : segment;
+  });
 }
 
 export function correctSpeakerCluster(segments, target, speakerName, registered = true) {
@@ -131,6 +175,7 @@ export function useRecording() {
   const saveTimerRef = useRef(null);
   const finalizationRef = useRef(null);
   const speakerCorrectionsRef = useRef(new Map());
+  const transcriptCorrectionsRef = useRef([]);
   const pendingAutosaveRef = useRef(null);
   const autosaveFailuresRef = useRef(0);
   const interruptedRef = useRef(false);
@@ -433,6 +478,7 @@ export function useRecording() {
         const result = await submitAudio(recording, `recording-${Date.now()}.webm`);
         if (result.segments?.length) {
           finalSegments = applyManualSpeakerCorrections(result.segments, liveSegments, speakerCorrectionsRef.current);
+          finalSegments = applyManualTranscriptCorrections(finalSegments, transcriptCorrectionsRef.current);
           committedRef.current = finalSegments;
           setSegments(finalSegments);
           setHasResult(true);
@@ -477,6 +523,7 @@ export function useRecording() {
     setActiveMeeting(null);
     committedRef.current = [];
     speakerCorrectionsRef.current.clear();
+    transcriptCorrectionsRef.current = [];
     pendingAutosaveRef.current = null;
     autosaveFailuresRef.current = 0;
     interruptedRef.current = false;
@@ -588,6 +635,9 @@ export function useRecording() {
     speakerCorrectionsRef.current = new Map((meeting.segments || [])
       .filter(({ corrected, sourceSpeaker }) => corrected && sourceSpeaker != null)
       .map(({ sourceSpeaker, speaker }) => [String(sourceSpeaker), speaker]));
+    transcriptCorrectionsRef.current = (meeting.segments || [])
+      .filter(({ transcriptCorrected }) => transcriptCorrected)
+      .map(({ start, end, text }) => ({ start, end, text }));
     setSegments(meeting.segments || []);
     setHasResult(true);
     elapsedRef.current = Number(meeting.duration) || 0;
@@ -617,11 +667,33 @@ export function useRecording() {
       .catch((error) => setNotice(`화자 수정을 저장하지 못했습니다. ${error.message}`));
   }, [saveActiveMeeting, segments, speakers]);
 
+  const correctTranscript = useCallback(async (target, text) => {
+    const next = correctTranscriptSegment(segments, target, text);
+    const corrected = next.find((segment, index) => segment !== segments[index]);
+    if (!corrected) return null;
+    transcriptCorrectionsRef.current = [
+      ...transcriptCorrectionsRef.current.filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end),
+      { start: corrected.start, end: corrected.end, text: corrected.text }
+    ];
+    committedRef.current = next.filter(({ pending }) => !pending);
+    setSegments(next);
+    try {
+      return await saveActiveMeeting({ segments: committedRef.current, duration: elapsedRef.current });
+    } catch (error) {
+      committedRef.current = segments.filter(({ pending }) => !pending);
+      setSegments(segments);
+      transcriptCorrectionsRef.current = transcriptCorrectionsRef.current
+        .filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end);
+      throw error;
+    }
+  }, [saveActiveMeeting, segments]);
+
   const resetMeeting = useCallback(() => {
     activeMeetingRef.current = null;
     setActiveMeeting(null);
     committedRef.current = [];
     speakerCorrectionsRef.current.clear();
+    transcriptCorrectionsRef.current = [];
     pendingAutosaveRef.current = null;
     autosaveFailuresRef.current = 0;
     interruptedRef.current = false;
@@ -668,7 +740,7 @@ export function useRecording() {
     language, setLanguage, mode, setMode: changeMode, isRecording, isBusy, status,
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, correctSpeaker,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }
