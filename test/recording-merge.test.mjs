@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
+  applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning, liveSocketCloseCodes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
   servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
@@ -212,6 +212,11 @@ test("recovers a suspended live audio context and reports an unrecoverable closu
   assert.equal(failures, 1);
   dispose();
   assert.equal(listener, null);
+});
+
+test("uses browser-authorized application close codes for fatal live failures", () => {
+  assert.ok(Object.values(liveSocketCloseCodes).every((code) => code >= 3_000 && code <= 4_999));
+  assert.notEqual(liveSocketCloseCodes.invalidResponse, liveSocketCloseCodes.serverError);
 });
 
 test("offers a verified probe as a profile sample only when it meets enrollment duration", () => {

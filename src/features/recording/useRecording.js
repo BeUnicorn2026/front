@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, patchJson, postJson, websocketUrl } from "../../api.js";
 
+export const liveSocketCloseCodes = Object.freeze({
+  serverError: 4001,
+  invalidResponse: 4002
+});
+
 export function mergeSegments(committed, incoming) {
   const next = committed.map((segment) => ({ ...segment }));
   for (const segment of incoming) {
@@ -466,6 +471,7 @@ export function useRecording() {
     socketRef.current = socket;
     socketDisconnectedRef.current = false;
     let ready = false;
+    let terminalMessage = "";
     const maximumWait = modeRef.current === "speaker" ? 120_000 : 15_000;
     const timeout = window.setTimeout(() => {
       if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "connection timeout");
@@ -477,8 +483,9 @@ export function useRecording() {
       try {
         event = JSON.parse(data);
       } catch {
-        setNotice("실시간 서버 응답을 해석하지 못했습니다. 기록을 안전하게 종료합니다.");
-        socket.close(1011, "invalid response");
+        terminalMessage = "실시간 서버 응답을 해석하지 못했습니다. 현재까지의 기록을 저장합니다.";
+        setNotice(terminalMessage);
+        socket.close(liveSocketCloseCodes.invalidResponse, "invalid response");
         return;
       }
       handleSocketEvent(event);
@@ -488,7 +495,11 @@ export function useRecording() {
         resolve(socket);
       } else if (event.type === "error" && !ready) {
         window.clearTimeout(timeout);
+        socket.close(liveSocketCloseCodes.serverError, "server error");
         reject(new Error(event.message));
+      } else if (event.type === "error") {
+        terminalMessage = event.message || "실시간 서버 오류로 기록을 종료합니다.";
+        socket.close(liveSocketCloseCodes.serverError, "server error");
       }
     });
     socket.addEventListener("error", () => {
@@ -510,7 +521,7 @@ export function useRecording() {
         setIsRecording(false);
         setIsBusy(true);
         setStatus("연결 종료 · 기록 보존 중");
-        setNotice("실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.");
+        setNotice(terminalMessage || "실시간 연결이 종료되어 현재까지의 기록을 안전하게 저장합니다. 저장 후 다시 시작해 주세요.");
         if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       }
     });
