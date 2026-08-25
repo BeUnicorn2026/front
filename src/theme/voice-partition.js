@@ -200,6 +200,8 @@ export const voicePartitionTheme = {
     "--brand-yellow": "#F7D06B",
     "--brand-cream": "#F9F4E4",
     "--brand-ink": "#14231D",
+    "--color-rail-icon": "#F9F4E4",
+    "--color-rail-selected": "#FFFFFF24",
     "--focus-outline-color": "var(--color-accent)"
   },
   components: {

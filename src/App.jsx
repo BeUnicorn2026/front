@@ -26,6 +26,7 @@ import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Token } from "@astryxdesign/core/Token";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
@@ -524,6 +525,7 @@ function IntelligencePanel({
 }) {
   const [openedTerms, setOpenedTerms] = useState(() => new Set());
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [panelTab, setPanelTab] = useState("terms");
   const openExplanation = (term) => {
     setOpenedTerms((current) => new Set(current).add(term.conceptId || term.term));
     onEvidence(term, "card_open");
@@ -537,7 +539,12 @@ function IntelligencePanel({
         </Stack>
         <Text type="supporting">{roles.length ? `${roles.join(" · ")} 관점으로 설명 중` : "일반 업무 관점으로 설명 중"}</Text>
       </Stack>
+      <TabList value={panelTab} onChange={setPanelTab} layout="fill" size="sm" hasDivider>
+        <Tab value="terms" label={`용어 ${terms.length}`} />
+        <Tab value="actions" label={`액션 ${actions.length}`} />
+      </TabList>
       <Stack gap={4}>
+        {panelTab === "terms" && (
         <List hasDividers header={<Heading level={3}>개인 용어</Heading>}>
           {terms.map((term) => {
             const termKey = term.conceptId || term.term;
@@ -619,14 +626,14 @@ function IntelligencePanel({
           })}
           {!terms.length && <ListItem label="감지된 개인 용어가 없습니다" description="회의 분석에서 실제 전문용어가 발견되면 이해 상태와 함께 표시됩니다." startContent={<Icon icon="info" color="secondary" />} />}
         </List>
+        )}
+        {panelTab === "actions" && (
         <List hasDividers header={<Heading level={3}>액션 아이템</Heading>}>
           {actions.map((action) => (
             <ListItem key={action.id} label={action.text} description={`담당 · ${action.owner}`} startContent={<Token label="할 일" color="teal" size="sm" />} endContent={<Text type="code" color="secondary">{action.due}</Text>} />
           ))}
           {!actions.length && <ListItem label="감지된 액션이 없습니다" description="담당이나 기한이 실제 발화로 확인되면 여기에 표시됩니다." startContent={<Icon icon="info" color="secondary" />} />}
         </List>
-        {!terms.length && !actions.length && (
-          <Banner status="info" title="회의 이해 정보가 아직 없습니다." description="용어나 할 일이 감지되면 발화 옆과 이 패널에 함께 표시됩니다." />
         )}
       </Stack>
     </Stack>
@@ -1597,11 +1604,11 @@ function Workspace({ context, onContextChange, onLogout }) {
           <Icon icon="microphone" color="inherit" label="Voice Partition" />
         </Stack>
         {navItems.slice(0, 4).map(([value, label, icon]) => (
-          <IconButton key={value} label={label} icon={<Icon icon={icon} />} variant={page === value ? "secondary" : "ghost"} size="lg" onClick={() => setPage(value)} />
+          <IconButton key={value} label={label} icon={<Icon icon={icon} color="inherit" />} variant="ghost" size="lg" onClick={() => setPage(value)} style={{ color: page === "record" && value === "record" ? "var(--brand-ink)" : "var(--color-rail-icon)", background: page === value ? value === "record" ? "var(--brand-coral)" : "var(--color-rail-selected)" : "transparent" }} />
         ))}
       </Stack>
       <Stack gap={3} align="center">
-        <IconButton label="멤버 및 설정" icon={<Icon icon="wrench" />} variant={page === "settings" ? "secondary" : "ghost"} size="lg" onClick={() => setPage("settings")} />
+        <IconButton label="멤버 및 설정" icon={<Icon icon="wrench" color="inherit" />} variant="ghost" size="lg" onClick={() => setPage("settings")} style={{ color: "var(--color-rail-icon)", background: page === "settings" ? "var(--color-rail-selected)" : "transparent" }} />
         <Avatar name={context.user.name} size="sm" />
       </Stack>
     </Stack>
