@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, dialogueNodeKind, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, dialogueNodeKind, extractKeywords, meetingStatusPresentation, segmentDialogueTopics, summarizeDialogueNode, wrapMindMapLabel } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -87,16 +87,21 @@ test("turns transcript evidence into incremental dialogue trees", () => {
   assert.equal(dialogueNodeKind("어떻게 시작할까요?"), "question");
   assert.equal(dialogueNodeKind("이 방식은 효율이 좋아서 유지하면 좋겠습니다"), "pro");
   assert.equal(dialogueNodeKind("네트워크 문제가 우려됩니다"), "con");
-  assert.equal(dialogueNodeKind("새로운 배포 동선을 제안합니다"), "idea");
+  assert.equal(dialogueNodeKind("새로운 배포 동선을 제안합니다"), "position");
+  assert.equal(summarizeDialogueNode("하나 둘 셋 넷 다섯 여섯 일곱 여덟").split(" ").length, 6);
+  assert.equal(segmentDialogueTopics(segments).length, 2);
 
   const trees = buildDialogueMapTrees(segments);
   assert.equal(trees.length, 2);
-  assert.deepEqual(trees.map(({ children }) => children.length), [2, 1]);
-  assert.ok(trees.every(({ root }) => root.kind === "topic"));
+  assert.deepEqual(trees.map(({ children }) => children.length), [1, 0]);
+  assert.ok(trees.every(({ root }) => root.kind === "position"));
+  assert.ok(trees.flatMap(({ root, children }) => [root, ...children]).every(({ label }) => label.split(" ").length <= 6));
+  assert.ok(trees.flatMap(({ links }) => links).every(({ from, to }) => from !== to));
+  assert.equal(new Set(trees.flatMap(({ links }) => links).map(({ from }) => from)).size, trees.flatMap(({ links }) => links).length);
 
   const layout = buildDialogueMapLayout(trees);
-  assert.equal(layout.edges.length, 3);
-  assert.equal(layout.nodes.length, 5);
+  assert.equal(layout.edges.length, 1);
+  assert.equal(layout.nodes.length, 3);
   assert.ok(layout.nodes.every(({ labelLines }) => labelLines.length <= 2));
   for (let leftIndex = 0; leftIndex < layout.nodes.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < layout.nodes.length; rightIndex += 1) {

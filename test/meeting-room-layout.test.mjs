@@ -8,21 +8,31 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   const end = source.indexOf("function meetingDate", start);
   const room = source.slice(start, end);
 
-  assert.match(room, /label="실시간 받아쓰기 헤더"/);
+  assert.match(room, /label=\{readOnly \? "회의 기록 헤더" : "실시간 받아쓰기 헤더"\}/);
   assert.match(room, /centerContent=\{/);
-  assert.match(room, /\{formatTime\(recording\.elapsed\)\}/);
+  assert.match(room, /\{formatTime\(displayedElapsed\)\}/);
   assert.match(room, /data-desktop-meeting-workspace/);
   assert.match(room, /<LiveStructurePanel segments=\{displayedSegments\}/);
   assert.match(room, /<LiveTranscriptFeed segments=\{displayedSegments\}/);
   assert.match(room, /data-desktop-meeting-controls/);
   assert.match(room, /data-meeting-participant-control/);
+  assert.match(room, /aria-controls="meeting-participant-status"/);
+  assert.match(room, /width: participantOpen \? "calc\(var\(--spacing-10\) \* 9\)" : "calc\(var\(--spacing-10\) \* 7\)"/);
+  assert.match(room, /id="meeting-participant-status"/);
+  assert.match(room, /position: "fixed"/);
+  assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
   assert.match(room, /label=\{recording\.isRecording \? "기록 중지"/);
 
-  assert.match(room, /data-room-invite-panel/);
-  assert.match(room, /maxHeight: inviteOpen/);
+  assert.match(room, /data-room-invite-drawer/);
+  assert.match(room, /as="aside"/);
+  assert.match(room, /transform: inviteOpen \? "translateX\(0\)" : "translateX\(calc\(100% - var\(--spacing-10\) - var\(--spacing-4\)\)\)"/);
+  assert.match(room, /icon=\{<Icon icon=\{inviteOpen \? "chevronRight" : "chevronLeft"\} \/>\}/);
   assert.match(room, />방 코드</);
   assert.match(room, /label="초대 링크 복사"/);
   assert.match(room, /aria-expanded=\{inviteOpen\}/);
+  assert.match(room, /\{!readOnly && \(/);
+  assert.match(room, /readOnly \? "기록 닫기" : "회의 나가기"/);
+  assert.match(room, /isReadOnly=\{readOnly\}/);
   assert.match(source, /<Heading level=\{2\}>구조도<\/Heading>/);
   assert.match(source, /<Heading level=\{2\}>대화 내용<\/Heading>/);
 
@@ -51,6 +61,7 @@ test("live transcript follows interim updates while respecting manual scroll", a
   assert.match(feed, /buildDialogueMapLayout\(trees\)/);
   assert.match(feed, /data-dialogue-tree/);
   assert.match(feed, /markerEnd="url\(#dialogue-tree-arrow\)"/);
+  assert.match(feed, /\{edge\.relation\}/);
   assert.match(feed, /<EmptyState/);
   assert.doesNotMatch(feed, /<(?:div|span)(?:\s|>)/);
 });

@@ -11,10 +11,13 @@ test("meeting quota blocks new recordings and file imports while preserving bill
   assert.match(appSource, /title=\{`\$\{billing\.subscription\.planId\} 플랜의 현재 기간 회의 횟수를 모두 사용했습니다\.`\}/);
 });
 
-test("speaker quota blocks enrollment and links to the plan screen", () => {
-  assert.match(appSource, /billing\?\.usage\?\.speakers && billing\.usage\.speakers\.remaining <= 0/);
+test("each account can register only its own voice profile", () => {
+  assert.match(appSource, /createdBy === context\.user\.id/);
+  assert.match(appSource, /const speakerLimitReached = Boolean\(selfSpeaker\)/);
+  assert.match(appSource, /recording\.enrollSpeaker\(context\.user\.name, speakerFile\)/);
   assert.match(appSource, /label="목소리 등록"[^>]*isDisabled=\{speakerLimitReached\}/);
-  assert.match(appSource, /<SettingsPage[^>]*billing=\{billing\}[^>]*onOpenBilling=/);
+  assert.match(appSource, /목소리는 다른 사람 대신 등록할 수 없습니다/);
+  assert.match(appSource, /<SettingsPage context=\{context\} recording=\{recording\} \/>/);
 });
 
 test("billing usage refreshes when local meeting or speaker collections change", () => {

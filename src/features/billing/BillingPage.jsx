@@ -141,11 +141,13 @@ export function BillingPage({ context, onBillingChange }) {
   };
 
   const subscription = billing?.subscription || { planId: "FREE" };
+  const currentPlanName = billing?.plans?.find(({ id }) => id === subscription.planId)?.name || subscription.planId;
   const meetingUsage = billing?.usage?.meetings;
-  const speakerUsage = billing?.usage?.speakers;
-  const durationHours = billing?.entitlements?.meetingDurationSeconds
-    ? billing.entitlements.meetingDurationSeconds / 3600
-    : 0;
+  const participantLimit = billing?.entitlements?.meetingParticipants;
+  const durationSeconds = billing?.entitlements?.meetingDurationSeconds;
+  const durationLabel = durationSeconds == null
+    ? "제한 없음"
+    : durationSeconds < 3600 ? `${Math.round(durationSeconds / 60)}분` : `${durationSeconds / 3600}시간`;
   return (
     <Layout
       contentWidth={1040}
@@ -153,7 +155,7 @@ export function BillingPage({ context, onBillingChange }) {
         <LayoutHeader height="calc(var(--spacing-10) * 3)" style={{ background: "var(--color-background-surface)", paddingInline: "var(--spacing-3)" }}>
           <Stack gap={1}>
             <Heading level={1} type="display-3">플랜과 사용량</Heading>
-            <Text color="secondary">팀에 맞는 회의 기록 용량과 개인화 기능을 선택하세요.</Text>
+            <Text color="secondary">회의 시간과 기록 수, 함께할 참가자 규모에 맞춰 선택하세요.</Text>
           </Stack>
         </LayoutHeader>
       )}
@@ -170,19 +172,19 @@ export function BillingPage({ context, onBillingChange }) {
                   </Stack>
                   <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={4}>
                     <Stack gap={2}>
-                      <Text color="secondary">회의</Text>
-                      <Heading level={2}>{meetingUsage?.used || 0}{meetingUsage?.limit == null ? "회" : ` / ${meetingUsage.limit}회`}</Heading>
-                      {meetingUsage?.limit != null && <ProgressBar label="회의 사용량" value={Math.min(100, Math.round((meetingUsage.used / meetingUsage.limit) * 100))} isLabelHidden />}
+                      <Text color="secondary">회의 기록</Text>
+                      <Heading level={2}>{meetingUsage?.used || 0}{meetingUsage?.limit == null ? "개 · 제한 없음" : ` / ${meetingUsage.limit}개`}</Heading>
+                      {meetingUsage?.limit != null && <ProgressBar label="회의 기록 사용량" value={Math.min(100, Math.round((meetingUsage.used / meetingUsage.limit) * 100))} isLabelHidden />}
                     </Stack>
                     <Stack gap={2}>
                       <Text color="secondary">회의당 최대 시간</Text>
-                      <Heading level={2}>{durationHours < 1 ? `${Math.round(durationHours * 60)}분` : `${durationHours}시간`}</Heading>
+                      <Heading level={2}>{durationLabel}</Heading>
                       <Text type="supporting">실시간 기록과 파일 전사에 적용</Text>
                     </Stack>
                     <Stack gap={2}>
-                      <Text color="secondary">등록 목소리</Text>
-                      <Heading level={2}>{speakerUsage?.used || 0} / {speakerUsage?.limit || 0}명</Heading>
-                      <ProgressBar label="화자 프로필 사용량" value={speakerUsage?.limit ? Math.min(100, Math.round((speakerUsage.used / speakerUsage.limit) * 100)) : 0} isLabelHidden />
+                      <Text color="secondary">회의 참가자 수</Text>
+                      <Heading level={2}>{participantLimit == null ? "제한 없음" : `${participantLimit}명`}</Heading>
+                      <Text type="supporting">목소리는 각 사용자가 본인 것만 등록</Text>
                     </Stack>
                   </Grid>
                 </Stack>
@@ -196,7 +198,7 @@ export function BillingPage({ context, onBillingChange }) {
               </Grid>
             </Section>
             <Stack gap={2} align="center">
-              <StatusDot variant={subscription.planId === "FREE" ? "neutral" : "success"} label={`${subscription.planId} 플랜 이용 중`} />
+              <StatusDot variant={subscription.planId === "FREE" ? "neutral" : "success"} label={`${currentPlanName} 플랜 이용 중`} />
               {subscription.currentPeriodEnd && <Text type="supporting">{new Date(subscription.currentPeriodEnd).toLocaleDateString("ko-KR")}까지 이용할 수 있습니다.</Text>}
               <Text type="supporting">유료 플랜은 결제일부터 30일간 적용되며 현재 버전에서는 직접 갱신합니다.</Text>
             </Stack>
