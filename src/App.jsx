@@ -5,6 +5,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { FileInput } from "@astryxdesign/core/FileInput";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
@@ -911,6 +912,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
     children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
   })), [analyzedStructure.tree, localTree]);
   const identifiesSpeakers = recording.mode === "speaker";
+  const unverifiedSpeakerCount = recording.speakers.filter((speaker) => !speaker.crossSessionVerificationCount).length;
   const visibleNotice = !identifiesSpeakers && recording.notice.includes("목소리를 한 명 이상 등록") ? "" : recording.notice;
 
   useEffect(() => {
@@ -1104,7 +1106,17 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
         <LayoutContent padding={compact ? 3 : 4}>
           <Stack gap={4}>
             {!recording.hasResult && (
-              <Banner status="info" title={identifiesSpeakers ? "화자 식별 회의를 시작할 준비가 됐습니다." : "목소리 등록 없이 STT를 바로 시험할 수 있습니다."} description={identifiesSpeakers ? "실시간 기록을 시작하거나 파일을 올리면 화자별 전사와 구조가 조직 문서로 자동 저장됩니다." : "아래에서 STT 테스트 시작을 누르고 말하면 중간·확정 전사가 실시간으로 표시되고 자동 저장됩니다."} />
+              <Banner
+                status={identifiesSpeakers && unverifiedSpeakerCount ? "warning" : "info"}
+                title={identifiesSpeakers
+                  ? unverifiedSpeakerCount ? `별도 음성 검증이 필요한 화자가 ${unverifiedSpeakerCount}명 있습니다.` : "화자 식별 회의를 시작할 준비가 됐습니다."
+                  : "목소리 등록 없이 STT를 바로 시험할 수 있습니다."}
+                description={identifiesSpeakers
+                  ? unverifiedSpeakerCount
+                    ? "설정의 식별 테스트에서 등록에 쓰지 않은 다른 날·거리·마이크의 음성으로 먼저 확인하면 실전 오식별을 줄일 수 있습니다."
+                    : "실시간 기록을 시작하거나 파일을 올리면 화자별 전사와 구조가 조직 문서로 자동 저장됩니다."
+                  : "아래에서 STT 테스트 시작을 누르고 말하면 중간·확정 전사가 실시간으로 표시되고 자동 저장됩니다."}
+              />
             )}
             <Feedback key={recording.mode} message={visibleNotice} status="warning" onDismiss={() => recording.setNotice("")} />
             <Feedback message={intelligenceNotice} status={intelligence ? "success" : "warning"} onDismiss={() => setIntelligenceNotice("")} />
@@ -1311,6 +1323,7 @@ function SettingsPage({ context, recording }) {
   const [sampleTarget, setSampleTarget] = useState(null);
   const [sampleFile, setSampleFile] = useState(null);
   const [identificationFile, setIdentificationFile] = useState(null);
+  const [independentRecording, setIndependentRecording] = useState(false);
   const [identification, setIdentification] = useState(null);
 
   useEffect(() => {
@@ -1378,8 +1391,10 @@ function SettingsPage({ context, recording }) {
     try {
       const form = new FormData();
       form.append("voice", identificationFile);
+      form.append("independentRecording", independentRecording ? "true" : "false");
       const result = await apiRequest("/api/speakers/identify", { method: "POST", body: form });
       setIdentification(result);
+      if (result.speakerProfile) recording.updateSpeaker(result.speakerProfile);
     } catch (error) {
       setFeedback(error.message);
     } finally {
@@ -1450,7 +1465,7 @@ function SettingsPage({ context, recording }) {
                       <Text color="secondary">프로필을 바꾸지 않고 최대 15초만 분석해 실시간 판정 기준을 미리 확인합니다.</Text>
                     </Stack>
                     <FormLayout direction={compact ? "vertical" : "horizontal"} defaultOptionality="required">
-                      <FileInput label="테스트 음성" value={identificationFile} onChange={(file) => { setIdentificationFile(file); setIdentification(null); }} accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" isRequired width="100%" />
+                      <FileInput label="테스트 음성" value={identificationFile} onChange={(file) => { setIdentificationFile(file); setIndependentRecording(false); setIdentification(null); }} accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" isRequired width="100%" />
                       <Button
                         type="submit"
                         variant="secondary"
@@ -1459,6 +1474,14 @@ function SettingsPage({ context, recording }) {
                         isDisabled={!recording.speakers.length || !identificationFile}
                       />
                     </FormLayout>
+                    <CheckboxInput
+                      label="등록에 사용하지 않은 별도 녹음입니다"
+                      description="다른 날·거리·마이크에서 녹음한 파일일 때만 선택하세요. 선택하지 않아도 식별 결과는 확인할 수 있습니다."
+                      value={independentRecording}
+                      onChange={setIndependentRecording}
+                      isDisabled={!identificationFile}
+                      disabledMessage="먼저 테스트 음성을 선택해 주세요."
+                    />
                     {!recording.speakers.length && <Text type="supporting">테스트하려면 먼저 목소리를 한 명 이상 등록해 주세요.</Text>}
                     {identification && (
                       <Stack gap={3}>
@@ -1467,7 +1490,7 @@ function SettingsPage({ context, recording }) {
                           title={identification.identification.matched
                             ? `${identification.identification.speaker.name}님으로 식별했습니다.`
                             : "이름을 확정하지 않았습니다."}
-                          description={identification.identification.message}
+                          description={`${identification.identification.message} ${identification.verification?.message || ""}`.trim()}
                         />
                         <ProgressBar
                           label={`최고 음성 유사도 · 기준 ${Math.round(identification.identification.requiredThreshold * 100)}%`}
@@ -1487,8 +1510,9 @@ function SettingsPage({ context, recording }) {
                 <List hasDividers header={<Heading level={3}>식별 가능한 사람</Heading>}>
                   {recording.speakers.length ? recording.speakers.map((speaker) => {
                     const quality = speaker.audioQuality;
-                    const metadata = `${speaker.enrollmentSessionCount || 1}회 등록 · ${(speaker.totalEnrollmentDuration || speaker.duration).toFixed(1)}초 · ${speaker.profileCount || 1}개 음성 표본 · ${speaker.enrollmentConsistency ? `일관성 ${Math.round(speaker.enrollmentConsistency * 100)}%` : "기존 프로필"}`;
-                    const controls = <Stack direction="horizontal" gap={2} align="center">{quality && <Token label={`품질 ${quality.score}점`} color={quality.score >= 80 ? "green" : quality.score >= 60 ? "yellow" : "red"} size="sm" />}<Button label="샘플 추가" variant="secondary" size="sm" onClick={() => { setSampleTarget(speaker); setSampleFile(null); }} /><Button label={`${speaker.name} 삭제`} variant="ghost" size="sm" onClick={() => setDeleteTarget(speaker)} /></Stack>;
+                    const verificationCount = speaker.crossSessionVerificationCount || 0;
+                    const metadata = `${speaker.enrollmentSessionCount || 1}회 등록 · ${(speaker.totalEnrollmentDuration || speaker.duration).toFixed(1)}초 · ${speaker.profileCount || 1}개 음성 표본 · ${speaker.enrollmentConsistency ? `내부 일관성 ${Math.round(speaker.enrollmentConsistency * 100)}%` : "기존 프로필"}`;
+                    const controls = <Stack direction="horizontal" gap={2} align="center"><Token label={verificationCount ? `별도 검증 ${verificationCount}회` : "별도 검증 필요"} color={verificationCount ? "green" : "yellow"} size="sm" />{quality && <Token label={`품질 ${quality.score}점`} color={quality.score >= 80 ? "green" : quality.score >= 60 ? "yellow" : "red"} size="sm" />}<Button label="샘플 추가" variant="secondary" size="sm" onClick={() => { setSampleTarget(speaker); setSampleFile(null); }} /><Button label={`${speaker.name} 삭제`} variant="ghost" size="sm" onClick={() => setDeleteTarget(speaker)} /></Stack>;
                     const description = compact ? <Stack gap={2}><Text type="supporting">{metadata}</Text>{quality?.warnings?.[0] && <Text type="supporting">{quality.warnings[0]}</Text>}{controls}</Stack> : `${metadata}${quality?.warnings?.[0] ? ` · ${quality.warnings[0]}` : ""}`;
                     return <ListItem key={speaker.id} label={speaker.name} description={description} startContent={<Avatar name={speaker.name} size="sm" />} endContent={compact ? undefined : controls} />;
                   }) : <ListItem label="등록된 화자가 없습니다" description="위에서 참조 음성을 등록하면 실시간 이름 식별을 시작할 수 있습니다." startContent={<Icon icon="microphone" color="secondary" />} />}

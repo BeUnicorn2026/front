@@ -659,11 +659,16 @@ export function useRecording() {
     return result.speaker;
   }, []);
 
+  const updateSpeaker = useCallback((speaker) => {
+    if (!speaker?.id) return;
+    setSpeakers((current) => current.map((existing) => existing.id === speaker.id ? speaker : existing));
+  }, []);
+
   return {
     language, setLanguage, mode, setMode: changeMode, isRecording, isBusy, status,
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, openMeeting, resetMeeting, correctSpeaker,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, correctSpeaker,
     reload: loadConfiguration
   };
 }
