@@ -530,6 +530,71 @@ function PageHeader({ title, description, endContent }) {
   );
 }
 
+// Split a sentence into plain-text runs and clickable spans for the given terms.
+// Scans left to right, matching the longest term at the earliest position so an
+// unfamiliar term embedded in the sentence becomes a single clickable target that
+// asks the backend to rewrite that sentence with an easier expression in place.
+function clickableSentenceNodes(text, terms, { onPick, disabled, busyTerm }) {
+  const source = String(text || "");
+  if (!terms.length || !source) return [source];
+  const lower = source.toLocaleLowerCase();
+  const nodes = [];
+  let cursor = 0;
+  let key = 0;
+  while (cursor < source.length) {
+    let best = null;
+    for (const term of terms) {
+      const needle = String(term.term || "").toLocaleLowerCase();
+      if (!needle) continue;
+      const at = lower.indexOf(needle, cursor);
+      if (at === -1) continue;
+      if (!best || at < best.at || (at === best.at && needle.length > best.length)) {
+        best = { at, length: needle.length, term };
+      }
+    }
+    if (!best) { nodes.push(source.slice(cursor)); break; }
+    if (best.at > cursor) nodes.push(source.slice(cursor, best.at));
+    const label = source.slice(best.at, best.at + best.length);
+    const isBusy = Boolean(busyTerm) && busyTerm === best.term.term;
+    const isInactive = disabled || isBusy;
+    nodes.push(
+      <span
+        key={`w-${key++}`}
+        role="button"
+        tabIndex={isInactive ? -1 : 0}
+        aria-label={`${label} 쉬운 표현으로 바꾸기`}
+        aria-disabled={isInactive ? "true" : undefined}
+        onClick={() => { if (!isInactive) onPick(best.term); }}
+        onKeyDown={(event) => {
+          if (isInactive) return;
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPick(best.term); }
+        }}
+        style={{
+          cursor: disabled ? "default" : "pointer",
+          color: "var(--color-text-accent)",
+          textDecoration: "underline",
+          textDecorationStyle: "dotted",
+          textUnderlineOffset: "3px",
+          fontWeight: 600,
+          opacity: isBusy ? 0.55 : 1
+        }}
+      >{label}</span>
+    );
+    cursor = best.at + best.length;
+  }
+  return nodes;
+}
+
+function replaceExactSentence(text, originalSentence, rewrittenSentence) {
+  const source = String(text || "");
+  const original = String(originalSentence || "");
+  const rewritten = String(rewrittenSentence || "");
+  if (!source || !original || !rewritten) return null;
+  const sentenceStart = source.indexOf(original);
+  if (sentenceStart === -1) return null;
+  return `${source.slice(0, sentenceStart)}${rewritten}${source.slice(sentenceStart + original.length)}`;
+}
+
 function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectText, compact = false, mode = "speaker", termCatalog = [] }) {
   const identifiesSpeakers = mode === "speaker";
   const [editTarget, setEditTarget] = useState(null);
@@ -1433,7 +1498,7 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
   );
 }
 
-function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly = false }) {
+function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly = false, analyzedTerms = [], rewrites = {}, onRewriteWord, onRevertRewrite, busyTerm = "" }) {
   const viewportRef = useRef(null);
   const followsLatestRef = useRef(true);
   const latestSegment = segments.at(-1);
@@ -1472,23 +1537,45 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
           </Stack>
         )}
       >
-        {segments.length ? segments.map((segment, index) => (
-          <ListItem
-            key={segment.id || `${segment.start}-${index}`}
-            label={(
-              <Stack direction="horizontal" align="center" gap={2}>
-                <Text weight="semibold">{segment.speaker || "화자"}</Text>
-                {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
-              </Stack>
-            )}
-            description={(
-              <Text as="p" type="large" color={segment.pending ? "secondary" : "primary"} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
-                {segment.text}
-              </Text>
-            )}
-            endContent={<Text type="code" color="secondary">{formatTime(segment.start)}</Text>}
-          />
-        )) : (
+        {segments.length ? segments.map((segment, index) => {
+          const rewrite = rewrites[index];
+          const clickableTerms = !isReadOnly && !segment.pending && onRewriteWord
+            ? matchingTerms(segment.text, analyzedTerms).filter((term) => !term.isKnown)
+            : [];
+          return (
+            <ListItem
+              key={segment.id || `${segment.start}-${index}`}
+              label={(
+                <Stack direction="horizontal" align="center" gap={2}>
+                  <Text weight="semibold">{segment.speaker || "화자"}</Text>
+                  {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
+                </Stack>
+              )}
+              description={rewrite ? (
+                <Stack gap={2}>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {rewrite.rewritten}
+                  </Text>
+                  <Text as="p" type="supporting" color="secondary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    원래 문장 · {rewrite.original}
+                  </Text>
+                  {onRevertRewrite && <Button label="원래 문장 보기" variant="ghost" size="sm" onClick={() => onRevertRewrite(index)} />}
+                </Stack>
+              ) : (
+                <Text as="p" type="large" color={segment.pending ? "secondary" : "primary"} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                  {clickableTerms.length
+                    ? clickableSentenceNodes(segment.text, clickableTerms, {
+                        onPick: (term) => onRewriteWord(segment, index, term),
+                        disabled: Boolean(busyTerm),
+                        busyTerm
+                      })
+                    : segment.text}
+                </Text>
+              )}
+              endContent={<Text type="code" color="secondary">{formatTime(segment.start)}</Text>}
+            />
+          );
+        }) : (
           <ListItem
             label={isRecording ? "말씀해 주세요" : isReadOnly ? "저장된 문장이 없습니다" : "아직 기록된 문장이 없습니다"}
             description={isRecording ? "듣고 있는 문장이 이곳에서 계속 업데이트됩니다." : isReadOnly ? "이 회의 기록에는 저장된 대화가 없습니다." : "오른쪽 위 마이크 버튼을 누르면 실시간 받아쓰기가 시작됩니다."}
@@ -1608,13 +1695,21 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap
   );
 }
 
-function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, user, readOnly = false }) {
+function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, user, onVocabularyRefresh, readOnly = false }) {
   const { compact, desktop, reducedMotion } = useViewport();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
+  const [intelligence, setIntelligence] = useState(null);
+  const [sentenceRewrites, setSentenceRewrites] = useState({});
+  const [rewriteBusyTerm, setRewriteBusyTerm] = useState("");
   const automaticRecordingAttemptRef = useRef(false);
   const displayedSegments = recording.segments;
+  const meetingId = recording.activeMeeting?.id;
+  const finalizedSegmentCount = displayedSegments.filter(({ pending }) => !pending).length;
+  const hasFinalizedTranscript = finalizedSegmentCount > 0;
+  const meetingIdRef = useRef(meetingId);
+  meetingIdRef.current = meetingId;
   const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id, readOnly);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   const roomCode = meetingRoomCode(room);
@@ -1637,6 +1732,67 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const microphoneLabel = selectedMicrophone?.label || "시스템 기본 마이크";
   const meetingControlHeight = "calc(var(--spacing-10) + var(--spacing-8))";
   const participantRestHeight = "calc(var(--spacing-10) + var(--spacing-6))";
+  const analyzedTerms = Array.isArray(intelligence?.terms) ? intelligence.terms : [];
+
+  useEffect(() => {
+    let cancelled = false;
+    setIntelligence(null);
+    setSentenceRewrites({});
+    setRewriteBusyTerm("");
+    if (!meetingId || !hasFinalizedTranscript) return () => { cancelled = true; };
+    apiRequest(`/api/meetings/${meetingId}/intelligence`)
+      .then(({ intelligence: cached }) => { if (!cancelled) setIntelligence(cached || null); })
+      .catch(() => { if (!cancelled) setIntelligence(null); });
+    return () => { cancelled = true; };
+  }, [hasFinalizedTranscript, meetingId, recording.activeMeeting?.updatedAt]);
+
+  const rewriteWordInSentence = async (segment, segmentIndex, term) => {
+    if (readOnly || !meetingId || !intelligence || segment?.pending || rewriteBusyTerm) return;
+    const canonicalTerm = String(term?.term || "").trim();
+    if (!canonicalTerm || !Number.isInteger(segmentIndex) || !displayedSegments[segmentIndex]) return;
+    setRewriteBusyTerm(canonicalTerm);
+    try {
+      await postJson("/api/knowledge/evidence", {
+        term: canonicalTerm,
+        kind: "request_simpler",
+        eventId: crypto.randomUUID(),
+        meetingId,
+        segmentIndex
+      });
+      const { explanation } = await postJson("/api/knowledge/explanations", {
+        term: canonicalTerm,
+        meetingId,
+        segmentIndex,
+        level: "simple"
+      });
+      const originalSentence = String(explanation?.originalSentence || "").trim();
+      const rewrittenSentence = String(explanation?.rewrittenContext || "").trim();
+      const rewrittenSegment = replaceExactSentence(segment.text, originalSentence, rewrittenSentence);
+      if (rewrittenSegment && meetingIdRef.current === meetingId) {
+        setSentenceRewrites((current) => ({
+          ...current,
+          [segmentIndex]: {
+            original: originalSentence,
+            rewritten: rewrittenSegment
+          }
+        }));
+      }
+      if (meetingIdRef.current === meetingId && onVocabularyRefresh) await onVocabularyRefresh();
+    } catch {
+      // Keep the original transcript visible when analysis data is stale or unavailable.
+    } finally {
+      if (meetingIdRef.current === meetingId) setRewriteBusyTerm("");
+    }
+  };
+
+  const revertSentenceRewrite = (segmentIndex) => {
+    setSentenceRewrites((current) => {
+      if (!(segmentIndex in current)) return current;
+      const next = { ...current };
+      delete next[segmentIndex];
+      return next;
+    });
+  };
 
   const copyText = async (value, successMessage) => {
     try {
@@ -1824,7 +1980,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                   <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} liveMap={recording.liveMap} />
                 </Stack>
                 <Stack width="100%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}>
-                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
+                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
                 </Stack>
               </Stack>
             ) : (
@@ -1834,7 +1990,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                     <Text type="supporting" color="secondary">{recording.notice}</Text>
                   </Section>
                 )}
-                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
+                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
               </Stack>
             )}
           </LayoutContent>
@@ -3250,7 +3406,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={leaveMeeting} onEnd={endMeeting} room={room} user={context.user} readOnly={meetingReadOnly} />;
+  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={leaveMeeting} onEnd={endMeeting} room={room} user={context.user} onVocabularyRefresh={refreshVocabulary} readOnly={meetingReadOnly} />;
 
   const shell = page === "home" || page === "record"
     ? <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>
