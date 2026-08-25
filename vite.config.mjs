@@ -1,8 +1,33 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+function deploymentMetadata() {
+  const commit = String(process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || "local");
+  const metadata = {
+    commit,
+    branch: String(process.env.CF_PAGES_BRANCH || "local"),
+    apiOriginConfigured: Boolean(process.env.VITE_API_ORIGIN)
+  };
+  return {
+    name: "deployment-metadata",
+    transformIndexHtml: {
+      order: "pre",
+      handler() {
+        return [{
+          tag: "meta",
+          attrs: { name: "voice-partition-commit", content: commit },
+          injectTo: "head"
+        }];
+      }
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "deployment.json", source: `${JSON.stringify(metadata, null, 2)}\n` });
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react({ jsxRuntime: "classic" })],
+  plugins: [deploymentMetadata(), react({ jsxRuntime: "classic" })],
   server: {
     port: 3000,
     proxy: {
