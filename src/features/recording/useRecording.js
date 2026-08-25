@@ -749,10 +749,6 @@ export function useRecording() {
       setNotice("이 브라우저는 실시간 음성 처리를 지원하지 않습니다.");
       return;
     }
-    if (modeRef.current === "speaker" && !speakers.length) {
-      setNotice("설정에서 목소리를 한 명 이상 등록해 주세요.");
-      return;
-    }
     if (!services.deepgram) {
       setNotice("서버에 Deepgram API 키가 설정되어 있지 않습니다.");
       return;
@@ -768,7 +764,9 @@ export function useRecording() {
     };
     setNotice("");
     setIsBusy(true);
-    setStatus("마이크와 모델 연결 중");
+    modeRef.current = "stt";
+    setMode("stt");
+    setStatus("마이크와 받아쓰기 연결 중");
     setSegments([]);
     setLiveMap(createLiveMapState());
     setHasResult(true);
@@ -1040,6 +1038,8 @@ export function useRecording() {
   }, []);
 
   const resetMeeting = useCallback(() => {
+    modeRef.current = "stt";
+    setMode("stt");
     activeMeetingRef.current = null;
     setActiveMeeting(null);
     committedRef.current = [];

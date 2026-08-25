@@ -47,12 +47,8 @@ import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording 
 import { BillingPage } from "./features/billing/BillingPage";
 import { useMeetMap } from "./features/meeting/useMeetMap";
 import {
-  VoiceEnrollmentDialog,
-  VOICE_ENROLLMENT_REQUIRED_MESSAGE,
   accessCodeFromLocation,
   clearAccessCodeFromLocation,
-  enrollVoice,
-  getVoiceEnrollmentStatus,
   joinRoomByAccessCode
 } from "./features/voice-enrollment";
 
@@ -161,7 +157,7 @@ function BrandStory({ compact = false }) {
           대화가 끝나기 전에, 문서는 이미 구조가 됩니다.
         </Heading>
         <Text type="large" color="secondary" as="p">
-          등록된 목소리를 실시간으로 확인하고, 회의 흐름을 주제별로 묶고,
+          대화 내용을 실시간으로 기록하고, 회의 흐름을 주제별로 묶고,
           나에게 낯선 용어만 역할에 맞게 설명합니다.
         </Text>
       </Stack>
@@ -986,7 +982,6 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
 }
 
 function RecordingFooter({ recording, compact, billing, onOpenBilling }) {
-  const identifiesSpeakers = recording.mode === "speaker";
   const microphoneLevel = microphoneLevelPresentation(recording.audioLevel, recording.isRecording);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   return (
@@ -996,12 +991,9 @@ function RecordingFooter({ recording, compact, billing, onOpenBilling }) {
           <Stack direction={compact ? "vertical" : "horizontal"} gap={2} align={compact ? "stretch" : "center"} justify="between">
             <Stack gap={0.5}>
               <Text weight="semibold">기록 모드</Text>
-              <Text type="supporting">{identifiesSpeakers ? "등록된 목소리와 실시간 발화를 함께 대조합니다." : "화자 등록 없이 Nova-3 전사 정확도와 반응을 확인합니다."}</Text>
+              <Text type="supporting">마이크 입력을 실시간 대화 내용으로 기록합니다.</Text>
             </Stack>
-            <SegmentedControl value={recording.mode} onChange={recording.setMode} label="실시간 기록 모드" size="sm" layout={compact ? "fill" : "hug"} isDisabled={recording.isRecording || recording.isBusy} disabledMessage="기록 중에는 모드를 바꿀 수 없습니다.">
-              <SegmentedControlItem value="stt" label="빠른 STT 테스트" />
-              <SegmentedControlItem value="speaker" label="화자 식별 회의" />
-            </SegmentedControl>
+            <Token label="실시간 기록" color="green" size="sm" />
           </Stack>
           <Stack direction={compact ? "vertical" : "horizontal"} gap={3} align={compact ? "stretch" : "center"} justify="between">
             <Stack direction="horizontal" gap={2} align="center">
@@ -2272,9 +2264,6 @@ function DashboardPage({
   entryPhase = "idle",
   onContextChange,
   initialRoomCode = "",
-  voiceEnrollment,
-  onOpenVoiceEnrollment,
-  onRetryVoiceEnrollment,
   accessJoin
 }) {
   const { compact, reducedMotion } = useViewport();
@@ -2321,11 +2310,6 @@ function DashboardPage({
   const submitRoom = async () => {
     if (!ready) return;
     setRoomError("");
-    if (!voiceEnrollment.ready) {
-      setRoomError(VOICE_ENROLLMENT_REQUIRED_MESSAGE);
-      onOpenVoiceEnrollment();
-      return;
-    }
     try {
       await onStart(code);
     } catch (error) {
@@ -2434,34 +2418,18 @@ function DashboardPage({
             <Stack width="100%" maxWidth="calc(var(--spacing-10) * 16)" height="100%" gap={4} paddingBlockStart={compact ? 3 : 6} paddingBlockEnd="calc(var(--spacing-10) * 3)" style={{ minHeight: 0 }}>
               {accessJoin.state !== "idle" && (
                 <Banner
-                  status={accessJoin.state === "error" ? "error" : accessJoin.state === "joined" ? "success" : accessJoin.state === "blocked" ? "warning" : "info"}
+                  status={accessJoin.state === "error" ? "error" : accessJoin.state === "joined" ? "success" : "info"}
                   title={accessJoin.state === "joining"
                     ? "초대받은 회의실에 참여하고 있습니다"
                     : accessJoin.state === "error"
                       ? "초대 링크로 참여하지 못했습니다"
                       : accessJoin.state === "joined"
                         ? "초대받은 회의실에 참여했습니다"
-                        : accessJoin.state === "blocked"
-                          ? "목소리를 등록한 뒤 초대 링크로 참여할 수 있습니다"
-                          : "초대 링크 참여를 준비하고 있습니다"}
+                        : "초대 링크 참여를 준비하고 있습니다"}
                   description={accessJoin.error || (accessJoin.state === "joined" ? "회의실 입장을 준비하고 있습니다." : "접근 코드를 안전하게 확인하는 중입니다.")}
                   endContent={accessJoin.state === "error"
                     ? <Button label="초대 링크 다시 시도" variant="secondary" size="sm" onClick={accessJoin.retry} />
-                    : accessJoin.state === "blocked"
-                      ? <Button label="목소리 등록" variant="primary" size="sm" onClick={onOpenVoiceEnrollment} />
-                      : undefined}
-                />
-              )}
-              {!voiceEnrollment.ready && (
-                <Banner
-                  status={voiceEnrollment.state === "loading" ? "info" : voiceEnrollment.state === "error" ? "error" : "warning"}
-                  title={voiceEnrollment.state === "loading" ? "목소리 등록 상태를 확인하고 있습니다" : "회의 전에 내 목소리를 등록해 주세요"}
-                  description={voiceEnrollment.error || "방 만들기, 초대 링크 참여, 회의실 입장은 등록 완료 뒤 사용할 수 있습니다."}
-                  endContent={voiceEnrollment.state === "error"
-                    ? <Button label="상태 다시 확인" variant="secondary" size="sm" onClick={onRetryVoiceEnrollment} />
-                    : voiceEnrollment.state !== "loading"
-                      ? <Button label="목소리 등록" variant="primary" size="sm" onClick={onOpenVoiceEnrollment} />
-                      : undefined}
+                    : undefined}
                 />
               )}
               <Card
@@ -3055,8 +3023,6 @@ function SettingsPage({ context, recording }) {
 function Workspace({ context, onContextChange, onLogout }) {
   const { compact, reducedMotion } = useViewport();
   const initialAccessCodeRef = useRef(accessCodeFromLocation());
-  const [voiceEnrollment, setVoiceEnrollment] = useState({ state: "loading", profile: null, ready: false, error: "" });
-  const [voiceEnrollmentOpen, setVoiceEnrollmentOpen] = useState(false);
   const [accessJoin, setAccessJoin] = useState(() => initialAccessCodeRef.current
     ? { state: "pending", error: "" }
     : { state: "idle", error: "" });
@@ -3087,33 +3053,6 @@ function Workspace({ context, onContextChange, onLogout }) {
     setVocabularyTerms(result.terms || []);
     return result.terms || [];
   };
-
-  const refreshVoiceEnrollment = useCallback(async () => {
-    setVoiceEnrollment((current) => ({ ...current, state: "loading", ready: false, error: "" }));
-    try {
-      const status = await getVoiceEnrollmentStatus();
-      setVoiceEnrollment({ ...status, error: "" });
-      if (!status.ready) setVoiceEnrollmentOpen(true);
-      return status;
-    } catch (error) {
-      const status = { state: "error", profile: null, ready: false, error: error.message || "목소리 등록 상태를 확인하지 못했습니다." };
-      setVoiceEnrollment(status);
-      setVoiceEnrollmentOpen(true);
-      return status;
-    }
-  }, []);
-
-  const handleVoiceEnroll = useCallback(async (file) => {
-    const status = await enrollVoice(file);
-    setVoiceEnrollment({ ...status, error: "" });
-    if (initialAccessCodeRef.current) setAccessJoin({ state: "pending", error: "" });
-    await recording.reload().catch(() => undefined);
-    return status;
-  }, [recording.reload]);
-
-  useEffect(() => {
-    void refreshVoiceEnrollment();
-  }, [context.organization.id, context.user.id, refreshVoiceEnrollment]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3164,12 +3103,6 @@ function Workspace({ context, onContextChange, onLogout }) {
     setPage(nextPage);
   }, []);
 
-  const requireVoiceEnrollment = useCallback(() => {
-    if (voiceEnrollment.ready) return true;
-    setVoiceEnrollmentOpen(true);
-    return false;
-  }, [voiceEnrollment.ready]);
-
   const beginMeetingEntry = useCallback((prepare, nextRoom) => {
     if (meetingEntryPhase !== "idle") return;
     meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -3189,7 +3122,6 @@ function Workspace({ context, onContextChange, onLogout }) {
   }, [meetingEntryPhase, navigateTo, reducedMotion, recording.resetMeeting]);
 
   const startNewMeeting = async (nextRoomCode) => {
-    if (!requireVoiceEnrollment()) throw new Error(VOICE_ENROLLMENT_REQUIRED_MESSAGE);
     const normalizedRoomCode = normalizeRoomCode(nextRoomCode);
     if (normalizedRoomCode.length !== 4) throw new Error("4자리 방 코드를 입력해 주세요.");
     if (!roomRequestRef.current || roomRequestRef.current.room !== normalizedRoomCode) {
@@ -3230,10 +3162,6 @@ function Workspace({ context, onContextChange, onLogout }) {
   const joinAccessInvite = useCallback(async () => {
     const accessCode = initialAccessCodeRef.current;
     if (!accessCode || accessJoinRequestRef.current) return;
-    if (!requireVoiceEnrollment()) {
-      setAccessJoin({ state: "blocked", error: VOICE_ENROLLMENT_REQUIRED_MESSAGE });
-      return;
-    }
     setAccessJoin({ state: "joining", error: "" });
     const request = joinRoomByAccessCode(accessCode);
     accessJoinRequestRef.current = request;
@@ -3254,13 +3182,13 @@ function Workspace({ context, onContextChange, onLogout }) {
     } finally {
       if (accessJoinRequestRef.current === request) accessJoinRequestRef.current = null;
     }
-  }, [beginMeetingEntry, recording.resetMeeting, requireVoiceEnrollment]);
+  }, [beginMeetingEntry, recording.resetMeeting]);
 
   useEffect(() => {
-    if (voiceEnrollment.ready && initialAccessCodeRef.current && accessJoin.state === "pending") {
+    if (initialAccessCodeRef.current && accessJoin.state === "pending") {
       void joinAccessInvite();
     }
-  }, [accessJoin.state, joinAccessInvite, voiceEnrollment.ready]);
+  }, [accessJoin.state, joinAccessInvite]);
 
   const navigation = (
     <TopNav
@@ -3287,7 +3215,7 @@ function Workspace({ context, onContextChange, onLogout }) {
 
   let content;
   if (page === "home") {
-    const dashboard = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} entryPhase={meetingEntryPhase} onContextChange={onContextChange} voiceEnrollment={voiceEnrollment} onOpenVoiceEnrollment={() => setVoiceEnrollmentOpen(true)} onRetryVoiceEnrollment={refreshVoiceEnrollment} accessJoin={{ ...accessJoin, retry: joinAccessInvite }} />;
+    const dashboard = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} entryPhase={meetingEntryPhase} onContextChange={onContextChange} accessJoin={{ ...accessJoin, retry: joinAccessInvite }} />;
     content = (
       <Stack height="100%" data-meeting-entry-stage style={{ position: "relative", overflow: "hidden", background: "var(--brand-cream)" }}>
         <Stack height="100%" aria-hidden={meetingEntryPhase === "idle"} style={{ visibility: meetingEntryPhase === "idle" ? "hidden" : "visible" }}>
@@ -3306,17 +3234,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   const shell = page === "home" || page === "record"
     ? <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>
     : <AppShell topNav={navigation} variant="surface" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
-  return (
-    <>
-      {shell}
-      <VoiceEnrollmentDialog
-        isOpen={voiceEnrollmentOpen}
-        onOpenChange={setVoiceEnrollmentOpen}
-        onEnroll={handleVoiceEnroll}
-        subtitle="회의실에 참여하려면 안내 문장을 읽어 내 목소리를 먼저 등록해 주세요. 닫아도 로그인과 워크스페이스는 유지됩니다."
-      />
-    </>
-  );
+  return shell;
 }
 
 export default function App() {
