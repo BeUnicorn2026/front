@@ -625,7 +625,7 @@ function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectTe
 }
 
 function IntelligencePanel({
-  terms, actions, roles, introduction, onEvidence, onExplain, explanations, onAnswer, busyTerm, busyAnswer
+  terms, actions, introduction, onEvidence, onExplain, explanations, onAnswer, busyTerm, busyAnswer
 }) {
   const [openedTerms, setOpenedTerms] = useState(() => new Set());
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -679,7 +679,7 @@ function IntelligencePanel({
                   <Stack gap={2}>
                     <ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel />
                     <Text type="supporting">{knowledge?.evidenceCount ? `내 피드백 ${knowledge.evidenceCount}개 기반` : knowledge?.source === "explicit_prior" ? "온보딩에서 직접 등록한 기지식" : "아직 피드백이 없는 초기 추정"}</Text>
-                    {isOpen && <Text as="p">{term.personalizedExplanation || term.definition || term.roleHints?.[roles[0]] || "이 용어에 대한 기본 설명을 준비 중입니다."}</Text>}
+                    {isOpen && <Text as="p">{term.personalizedExplanation || term.definition || "이 용어에 대한 기본 설명을 준비 중입니다."}</Text>}
                     {generated && (
                       <Section variant="muted" padding={3}>
                         <Stack gap={3}>
@@ -690,8 +690,11 @@ function IntelligencePanel({
                           </Stack>
                           {generated.rewrittenContext && (
                             <Stack gap={1}>
-                              <Text weight="semibold">문맥을 쉽게 풀어 쓴 문장</Text>
-                              <Text as="p" color="secondary">{generated.rewrittenContext}</Text>
+                              <Text weight="semibold">이 문장에서 쉬운 말로 바꿔봤어요</Text>
+                              {generated.originalSentence && (
+                                <Text as="p" type="supporting" color="secondary"><Text as="span" color="secondary">원래 문장 · </Text>{generated.originalSentence}</Text>
+                              )}
+                              <Text as="p">{generated.rewrittenContext}</Text>
                             </Stack>
                           )}
                           <RadioList
@@ -1269,7 +1272,6 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
     <IntelligencePanel
       terms={terms}
       actions={actions}
-      roles={context.user.vocabulary?.roles || []}
       introduction={context.user.introduction || ""}
       onEvidence={recordKnowledgeEvidence}
       onExplain={requestKnowledgeExplanation}
