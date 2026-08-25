@@ -1,3 +1,11 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), geolocation=(), microphone=(self)
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
 /
   Cache-Control: no-cache, must-revalidate
 
@@ -14,6 +22,9 @@
   Cache-Control: no-cache, must-revalidate
 
 /settings
+  Cache-Control: no-cache, must-revalidate
+
+/billing
   Cache-Control: no-cache, must-revalidate
 
 /deployment.json

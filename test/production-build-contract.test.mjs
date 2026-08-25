@@ -20,6 +20,11 @@ test("Cloudflare build publishes verifiable commit metadata and runs the bundle 
   assert.match(headers, /\/index\.html[\s\S]*no-cache/);
   assert.match(headers, /\/assets\/\*[\s\S]*immutable/);
   assert.match(headers, /\/record[\s\S]*no-cache/);
+  assert.match(headers, /\/billing[\s\S]*no-cache/);
+  assert.match(headers, /X-Content-Type-Options: nosniff/);
+  assert.match(headers, /X-Frame-Options: DENY/);
+  assert.match(headers, /Permissions-Policy:.*microphone=\(self\)/);
+  assert.match(headers, /Cross-Origin-Opener-Policy: same-origin-allow-popups/);
   assert.match(redirects, /^\/\* \/index\.html 200/m);
 });
 
