@@ -25,5 +25,5 @@ test("interim transcript status is not conditional on vocabulary matches", async
 test("page headers render the contextual descriptions supplied by each screen", async () => {
   const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.match(source, /function PageHeader\(\{ title, description, endContent \}\)/);
-  assert.match(source, /!compact && description && <Text[^>]*>\{description\}<\/Text>/);
+  assert.match(source, /description && <Text[^>]*>\{description\}<\/Text>/);
 });

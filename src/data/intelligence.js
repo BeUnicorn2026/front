@@ -247,6 +247,102 @@ export function buildStructureDiagramLayout(blocks) {
   };
 }
 
+export function dialogueNodeKind(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (/[?？]$/.test(normalized) || /(?:어떻게|왜|무엇|어떤|할까요|인가요|맞나요|필요할까요)/.test(normalized)) return "question";
+  if (/(?:우려|문제|위험|반대|어렵|불편|부족|실패|안 됩|없습)/.test(normalized)) return "con";
+  if (/(?:장점|좋|찬성|효율|가능|도움|개선|유지|지원)/.test(normalized)) return "pro";
+  return "idea";
+}
+
+export function buildDialogueMapTrees(segments, { maximumChildren = 4 } = {}) {
+  const childLimit = Math.max(2, Math.min(6, Math.floor(Number(maximumChildren) || 4)));
+  return buildStructureBlocks(segments).map((block, topicIndex) => {
+    const firstStatement = String(block.segments[0]?.text || "").replace(/[.!?。！？]+$/g, "").trim();
+    const topicLabel = firstStatement.split(/\s+/).slice(0, 6).join(" ") || block.label;
+    return {
+      id: block.id,
+      index: topicIndex,
+      root: {
+        id: `${block.id}-root`,
+        kind: "topic",
+        label: topicLabel,
+        meta: `${formatTime(block.start)} · 주제 ${topicIndex + 1}`
+      },
+      children: block.segments.slice(-childLimit).map((segment, segmentIndex) => ({
+        id: segment.id || `${block.id}-segment-${segmentIndex}-${segment.start}`,
+        kind: dialogueNodeKind(segment.text),
+        label: String(segment.text || "발화 내용 없음").trim(),
+        meta: `${segment.speaker || "화자"} · ${formatTime(segment.start)}`,
+        pending: Boolean(segment.pending)
+      }))
+    };
+  });
+}
+
+export function buildDialogueMapLayout(trees) {
+  const source = Array.isArray(trees) ? trees : [];
+  const width = 560;
+  const rootWidth = 190;
+  const nodeWidth = 230;
+  const nodeHeight = 72;
+  const rootX = 20;
+  const nodeX = 310;
+  const edgeX = 260;
+  const rowGap = 12;
+  const groupGap = 40;
+  let cursorY = 24;
+  const nodes = [];
+  const edges = [];
+
+  for (const tree of source) {
+    const childCount = Math.max(1, tree.children.length);
+    const childrenHeight = childCount * nodeHeight + Math.max(0, childCount - 1) * rowGap;
+    const groupHeight = Math.max(nodeHeight, childrenHeight);
+    const rootY = cursorY + (groupHeight - nodeHeight) / 2;
+    nodes.push({
+      ...tree.root,
+      topicIndex: tree.index,
+      level: 1,
+      x: rootX,
+      y: rootY,
+      width: rootWidth,
+      height: nodeHeight,
+      labelLines: wrapMindMapLabel(tree.root.label, 13)
+    });
+
+    tree.children.forEach((child, childIndex) => {
+      const childY = cursorY + childIndex * (nodeHeight + rowGap);
+      nodes.push({
+        ...child,
+        topicIndex: tree.index,
+        level: 2,
+        x: nodeX,
+        y: childY,
+        width: nodeWidth,
+        height: nodeHeight,
+        labelLines: wrapMindMapLabel(child.label, 17)
+      });
+      const rootCenterY = rootY + nodeHeight / 2;
+      const childCenterY = childY + nodeHeight / 2;
+      edges.push({
+        id: `${tree.root.id}-${child.id}`,
+        path: `M ${rootX + rootWidth} ${rootCenterY} H ${edgeX} V ${childCenterY} H ${nodeX}`
+      });
+    });
+
+    cursorY += groupHeight + groupGap;
+  }
+
+  return {
+    edges,
+    height: Math.max(280, cursorY - groupGap + 24),
+    nodeHeight,
+    nodes,
+    width
+  };
+}
+
 export function deriveTerms(segments, knownTerms = [], catalog = []) {
   const known = new Set(knownTerms.map((term) => term.toLocaleLowerCase()));
   const found = new Map();

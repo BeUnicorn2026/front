@@ -148,11 +148,11 @@ export function BillingPage({ context, onBillingChange }) {
     : 0;
   return (
     <Layout
-      contentWidth={1120}
+      contentWidth={1040}
       header={(
-        <LayoutHeader>
+        <LayoutHeader height="calc(var(--spacing-10) * 3)" style={{ background: "var(--color-background-surface)", paddingInline: "var(--spacing-3)" }}>
           <Stack gap={1}>
-            <Heading level={1}>플랜</Heading>
+            <Heading level={1} type="display-3">플랜과 사용량</Heading>
             <Text color="secondary">팀에 맞는 회의 기록 용량과 개인화 기능을 선택하세요.</Text>
           </Stack>
         </LayoutHeader>
@@ -162,31 +162,31 @@ export function BillingPage({ context, onBillingChange }) {
           <Stack gap={6}>
             {feedback && <Banner status={feedback.status} title={feedback.message} isDismissable onDismiss={() => setFeedback(null)} />}
             {billing && (
-              <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={3}>
-                <Card padding={4}>
-                  <Stack gap={2}>
-                    <Text type="supporting">현재 기간 회의</Text>
-                    <Heading level={2}>{meetingUsage?.used || 0}{meetingUsage?.limit == null ? "회" : ` / ${meetingUsage.limit}회`}</Heading>
-                    {meetingUsage?.limit != null && <ProgressBar label="회의 사용량" value={Math.min(100, Math.round((meetingUsage.used / meetingUsage.limit) * 100))} hasValueLabel />}
-                    <Text type="supporting">{new Date(billing.usage.periodStart).toLocaleDateString("ko-KR")}부터 집계</Text>
+              <Section variant="muted" padding={4}>
+                <Stack gap={4}>
+                  <Stack direction="horizontal" justify="between" align="center">
+                    <Heading level={2}>현재 사용량</Heading>
+                    <Text type="supporting" color="secondary">{new Date(billing.usage.periodStart).toLocaleDateString("ko-KR")}부터</Text>
                   </Stack>
-                </Card>
-                <Card padding={4}>
-                  <Stack gap={2}>
-                    <Text type="supporting">회의당 최대 시간</Text>
-                    <Heading level={2}>{durationHours < 1 ? `${Math.round(durationHours * 60)}분` : `${durationHours}시간`}</Heading>
-                    <Text type="supporting">실시간 기록과 파일 전사에 동일하게 적용</Text>
-                  </Stack>
-                </Card>
-                <Card padding={4}>
-                  <Stack gap={2}>
-                    <Text type="supporting">등록 화자</Text>
-                    <Heading level={2}>{speakerUsage?.used || 0} / {speakerUsage?.limit || 0}명</Heading>
-                    <ProgressBar label="화자 프로필 사용량" value={speakerUsage?.limit ? Math.min(100, Math.round((speakerUsage.used / speakerUsage.limit) * 100)) : 0} hasValueLabel />
-                    <Text type="supporting">조직 전체에서 공유하는 음성 프로필</Text>
-                  </Stack>
-                </Card>
-              </Grid>
+                  <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={4}>
+                    <Stack gap={2}>
+                      <Text color="secondary">회의</Text>
+                      <Heading level={2}>{meetingUsage?.used || 0}{meetingUsage?.limit == null ? "회" : ` / ${meetingUsage.limit}회`}</Heading>
+                      {meetingUsage?.limit != null && <ProgressBar label="회의 사용량" value={Math.min(100, Math.round((meetingUsage.used / meetingUsage.limit) * 100))} isLabelHidden />}
+                    </Stack>
+                    <Stack gap={2}>
+                      <Text color="secondary">회의당 최대 시간</Text>
+                      <Heading level={2}>{durationHours < 1 ? `${Math.round(durationHours * 60)}분` : `${durationHours}시간`}</Heading>
+                      <Text type="supporting">실시간 기록과 파일 전사에 적용</Text>
+                    </Stack>
+                    <Stack gap={2}>
+                      <Text color="secondary">등록 목소리</Text>
+                      <Heading level={2}>{speakerUsage?.used || 0} / {speakerUsage?.limit || 0}명</Heading>
+                      <ProgressBar label="화자 프로필 사용량" value={speakerUsage?.limit ? Math.min(100, Math.round((speakerUsage.used / speakerUsage.limit) * 100)) : 0} isLabelHidden />
+                    </Stack>
+                  </Grid>
+                </Stack>
+              </Section>
             )}
             <Section padding={0}>
               <Grid columns={{ minWidth: 260, max: 3, repeat: "fit" }} gap={4}>

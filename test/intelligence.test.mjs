@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, dialogueNodeKind, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -81,6 +81,32 @@ test("lays out the structure diagram as a non-overlapping chronological snake", 
     }
   }
   assert.ok(layout.height > layout.nodes.at(-1).y + layout.nodeHeight / 2);
+});
+
+test("turns transcript evidence into incremental dialogue trees", () => {
+  assert.equal(dialogueNodeKind("어떻게 시작할까요?"), "question");
+  assert.equal(dialogueNodeKind("이 방식은 효율이 좋아서 유지하면 좋겠습니다"), "pro");
+  assert.equal(dialogueNodeKind("네트워크 문제가 우려됩니다"), "con");
+  assert.equal(dialogueNodeKind("새로운 배포 동선을 제안합니다"), "idea");
+
+  const trees = buildDialogueMapTrees(segments);
+  assert.equal(trees.length, 2);
+  assert.deepEqual(trees.map(({ children }) => children.length), [2, 1]);
+  assert.ok(trees.every(({ root }) => root.kind === "topic"));
+
+  const layout = buildDialogueMapLayout(trees);
+  assert.equal(layout.edges.length, 3);
+  assert.equal(layout.nodes.length, 5);
+  assert.ok(layout.nodes.every(({ labelLines }) => labelLines.length <= 2));
+  for (let leftIndex = 0; leftIndex < layout.nodes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < layout.nodes.length; rightIndex += 1) {
+      const left = layout.nodes[leftIndex];
+      const right = layout.nodes[rightIndex];
+      const overlaps = left.x < right.x + right.width && left.x + left.width > right.x
+        && left.y < right.y + right.height && left.y + left.height > right.y;
+      assert.equal(overlaps, false);
+    }
+  }
 });
 
 test("live action preview assigns only evidence-backed owners and due dates", () => {

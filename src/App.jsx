@@ -9,6 +9,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Center } from "@astryxdesign/core/Center";
 import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { FileInput } from "@astryxdesign/core/FileInput";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -22,6 +23,7 @@ import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { Section } from "@astryxdesign/core/Section";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Selector } from "@astryxdesign/core/Selector";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { Stack } from "@astryxdesign/core/Stack";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
@@ -30,10 +32,11 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Token } from "@astryxdesign/core/Token";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
+import { TopNav, TopNavHeading, TopNavItem } from "@astryxdesign/core/TopNav";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiEndpoint, apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout,
+  ROLE_OPTIONS, buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
@@ -73,6 +76,37 @@ function Feedback({ message, status = "error", onDismiss }) {
   return <Banner status={status} title={message} isDismissable={Boolean(onDismiss)} onDismiss={onDismiss} />;
 }
 
+const MASCOT_ART = Object.freeze({
+  guide: "/characters/guide-yellow.png",
+  welcome: "/characters/welcome-blue.png",
+  empty: "/characters/empty-pink.png",
+  connecting: "/characters/connecting-mint.png"
+});
+
+function MascotArtwork({ kind, alt, size = "calc(var(--spacing-10) * 3)" }) {
+  return (
+    <Stack
+      as="figure"
+      width={size}
+      height={size}
+      style={{
+        flex: "none",
+        margin: "var(--spacing-0)",
+        overflow: "hidden",
+        borderRadius: "var(--radius-page)",
+        boxShadow: "var(--shadow-low)"
+      }}
+    >
+      <img
+        src={MASCOT_ART[kind]}
+        alt={alt}
+        draggable="false"
+        style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }}
+      />
+    </Stack>
+  );
+}
+
 function ServiceConnectionScreen({ error, onRetry, isRetrying }) {
   const configurationProblem = error?.code === "INVALID_API_RESPONSE";
   return (
@@ -108,7 +142,7 @@ function BrandStory({ compact = false }) {
         </Card>
         <Stack gap={0.5}>
           <Text type="label" weight="semibold">VOICE PARTITION</Text>
-          <Text type="supporting">Speaker-aware meeting intelligence</Text>
+          <Text type="supporting">말하는 동안 정리되는 회의 기록</Text>
         </Stack>
       </Stack>
       <Stack gap={3}>
@@ -131,13 +165,14 @@ function BrandStory({ compact = false }) {
 }
 
 function AuthScreen({ onAuthenticated }) {
-  const { compact, desktop } = useViewport();
+  const { compact, desktop, reducedMotion } = useViewport();
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [verification, setVerification] = useState(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const authViewportRef = useRef(null);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -201,12 +236,13 @@ function AuthScreen({ onAuthenticated }) {
     setVerification(null);
     setVerificationCode("");
     setError("");
+    authViewportRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
   };
 
   return (
     <AppShell variant="surface" height="fill" contentPadding={0}>
-      <Stack direction={desktop ? "horizontal" : "vertical"} height={desktop ? "100%" : undefined}>
-        <Stack width={desktop ? "var(--layout-auth-brand-width)" : "100%"} height={desktop ? "100%" : undefined} justify="between" padding={compact ? 5 : 10} gap={compact ? 5 : 8} style={{ background: "var(--brand-cream)", color: "var(--brand-ink)", flex: "none" }}>
+      <Stack direction={desktop ? "horizontal" : "vertical"} height="100%">
+        {desktop && <Stack width="var(--layout-auth-brand-width)" height="100%" justify="between" padding={10} gap={8} style={{ background: "var(--brand-cream)", color: "var(--brand-ink)", flex: "none" }}>
             <Stack direction="horizontal" gap={2} align="center">
               <Stack width={36} height={36} align="center" justify="center" style={{ background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
                 <Icon icon="microphone" color="inherit" label="Voice Partition" size="lg" />
@@ -214,7 +250,10 @@ function AuthScreen({ onAuthenticated }) {
               <Text type="large" weight="semibold">VOICE PARTITION</Text>
             </Stack>
             <Stack gap={6} maxWidth={480}>
-              <Heading level={1} type={compact ? "display-3" : "display-2"} textWrap="balance">회의가 끝나면 문서도 끝나 있어요</Heading>
+              <Stack direction="horizontal" gap={5} align="center">
+                <Heading level={1} type={compact ? "display-3" : "display-2"} textWrap="balance">회의가 끝나면 문서도 끝나 있어요</Heading>
+                <MascotArtwork kind="guide" alt="회의 기록을 안내하는 노란 캐릭터" size="calc(var(--spacing-10) * 3)" />
+              </Stack>
               <Stack gap={4}>
                 {[
                   ["var(--brand-mint)", "말하는 동안 구조가 잡힙니다", "주제 · 결정 · 액션 아이템이 트리로 정리돼요"],
@@ -232,12 +271,30 @@ function AuthScreen({ onAuthenticated }) {
               </Stack>
             </Stack>
             <Text type="supporting" color="secondary">회의 녹음은 조직이 설정한 보관 정책에 따라 관리됩니다.</Text>
-        </Stack>
-        <Section width="100%" padding={compact ? 5 : 10}>
-          <Stack height="100%" justify="between" align="center" gap={8}>
-            <Stack direction="horizontal" width="100%" maxWidth={400} justify="end">
-              <Text type="supporting" color="secondary">보안이 적용된 조직 워크스페이스</Text>
-            </Stack>
+        </Stack>}
+        <Section width="100%" height="100%" padding={compact ? 4 : 10}>
+          <Stack ref={authViewportRef} height="100%" justify={compact ? "start" : "between"} align="center" gap={compact ? 6 : 8} isScrollable={compact}>
+            {compact ? (
+              <Stack width="100%" maxWidth={400} gap={4} paddingBlockStart={2} data-mobile-auth-header>
+                <Stack direction="horizontal" justify="between" align="center" gap={3}>
+                  <Stack direction="horizontal" gap={2} align="center">
+                    <Stack width={36} height={36} align="center" justify="center" style={{ background: "var(--brand-mint)", color: "var(--brand-ink)", borderRadius: "var(--radius-element)" }}>
+                      <Icon icon="microphone" color="inherit" label="보이스 파티션" />
+                    </Stack>
+                    <Text weight="semibold">보이스 파티션</Text>
+                  </Stack>
+                  <MascotArtwork kind="welcome" alt="로그인을 반기는 파란 캐릭터" size="calc(var(--spacing-10) + var(--spacing-4))" />
+                </Stack>
+                <Stack gap={1}>
+                  <Heading level={1} type="display-3" textWrap="balance">회의를 바로 기록하세요</Heading>
+                  <Text color="secondary">로그인하면 참여했던 회의와 실시간 받아쓰기가 이어집니다.</Text>
+                </Stack>
+              </Stack>
+            ) : (
+              <Stack direction="horizontal" width="100%" maxWidth={400} justify="end">
+                <Text type="supporting" color="secondary">보안이 적용된 조직 워크스페이스</Text>
+              </Stack>
+            )}
             <Stack as="form" onSubmit={submit} gap={6} width="100%" maxWidth={400}>
               <Stack gap={1.5}>
                 <Heading level={2}>{verification ? "이메일을 확인해 주세요" : mode === "login" ? "다시 만나서 반가워요" : "계정을 만들어 시작하세요"}</Heading>
@@ -281,7 +338,7 @@ function AuthScreen({ onAuthenticated }) {
                 </Stack>
               )}
             </Stack>
-            <Text type="supporting" color="secondary" justify="center">
+            <Text type="supporting" color="secondary" justify="center" style={{ paddingBlockEnd: compact ? "var(--spacing-4)" : 0 }}>
               계속하면 서비스 약관과 개인정보 처리방침에 동의하게 됩니다.
             </Text>
           </Stack>
@@ -329,7 +386,7 @@ function OrganizationSetup({ context, onChange }) {
           <Card padding={compact ? 4 : 6}>
             <Stack as="form" onSubmit={submit} gap={5}>
               <Stack gap={1}>
-                <Text type="label" color="accent" weight="semibold">STEP 2 OF 3</Text>
+                <Text type="label" color="accent" weight="semibold">2 / 3 단계</Text>
                 <Heading level={2}>회사를 연결하세요</Heading>
                 <Text color="secondary" as="p">회사마다 회의, 구성원, 등록 목소리와 공용 용어 사전이 분리됩니다.</Text>
               </Stack>
@@ -386,7 +443,7 @@ function VocabularyOnboarding({ context, onChange }) {
       <Stack align="center" paddingBlock={compact ? 3 : 8}>
         <Stack width="100%" maxWidth={920} gap={6}>
           <Stack gap={2}>
-            <Text type="label" color="accent" weight="semibold">STEP 3 OF 3</Text>
+            <Text type="label" color="accent" weight="semibold">3 / 3 단계</Text>
             <Heading level={1}>내가 아는 것만 빼고 설명할게요</Heading>
             <Text type="large" color="secondary" as="p">역할과 익숙한 용어를 선택하면 같은 단어도 현재 업무 맥락에 맞춰 풀이합니다.</Text>
             <ProgressBar label="온보딩 진행률" value={100} hasValueLabel />
@@ -439,16 +496,19 @@ function VocabularyOnboarding({ context, onChange }) {
 
 function PageHeader({ title, description, endContent }) {
   const { compact } = useViewport();
-  const visibleTitle = compact && title.length > 18 ? `${title.slice(0, 18)}…` : title;
   return (
-    <LayoutHeader height={64} hasDivider label={`${title} 헤더`}>
+    <LayoutHeader
+      height={compact ? "calc(var(--spacing-10) * 2 + var(--spacing-4))" : "calc(var(--spacing-10) * 3)"}
+      label={`${title} 헤더`}
+      style={{ background: "var(--color-background-surface)" }}
+    >
       <Toolbar
         label={`${title} 도구`}
         size="lg"
         startContent={(
-          <Stack gap={0.5}>
-            <Heading level={compact ? 2 : 1} maxLines={1}>{visibleTitle}</Heading>
-            {!compact && description && <Text type="supporting" color="secondary" maxLines={1}>{description}</Text>}
+          <Stack gap={1} style={{ minWidth: 0 }}>
+            <Heading level={1} type={compact ? undefined : "display-3"} maxLines={1}>{title}</Heading>
+            {description && <Text color="secondary" maxLines={2} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>{description}</Text>}
           </Stack>
         )}
         endContent={endContent}
@@ -982,7 +1042,7 @@ function RecordingFooter({ recording, compact, billing, onOpenBilling }) {
   );
 }
 
-function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh, billing, onOpenBilling, onLeave, roomCode }) {
+function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh, billing, onOpenBilling, onLeave, roomCode }) {
   const { compact, desktop } = useViewport();
   const [view, setView] = useState("tree");
   const [isInsightOpen, setInsightOpen] = useState(false);
@@ -1355,11 +1415,400 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh,
   );
 }
 
+function LiveTranscriptFeed({ segments, isRecording, reducedMotion }) {
+  const viewportRef = useRef(null);
+  const followsLatestRef = useRef(true);
+  const latestSegment = segments.at(-1);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !followsLatestRef.current) return;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: reducedMotion ? "auto" : "smooth"
+    });
+  }, [latestSegment?.text, latestSegment?.pending, segments.length, reducedMotion]);
+
+  const updateFollowState = (event) => {
+    const viewport = event.currentTarget;
+    followsLatestRef.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 72;
+  };
+
+  return (
+    <Stack
+      ref={viewportRef}
+      isScrollable
+      height="100%"
+      onScroll={updateFollowState}
+      style={{ minHeight: 0, scrollBehavior: reducedMotion ? "auto" : "smooth" }}
+    >
+      <List
+        hasDividers
+        density="spacious"
+        header={(
+          <Stack padding={4} style={{ borderBottom: "var(--border-width) solid var(--color-border)" }}>
+            <Stack direction="horizontal" justify="between" align="center" gap={3}>
+              <Heading level={2}>대화 내용</Heading>
+              <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>{segments.length}개 발화</Text>
+            </Stack>
+          </Stack>
+        )}
+      >
+        {segments.length ? segments.map((segment, index) => (
+          <ListItem
+            key={segment.id || `${segment.start}-${index}`}
+            label={(
+              <Stack direction="horizontal" align="center" gap={2}>
+                <Text weight="semibold">{segment.speaker || "화자"}</Text>
+                {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
+              </Stack>
+            )}
+            description={(
+              <Text as="p" type="large" color={segment.pending ? "secondary" : "primary"} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                {segment.text}
+              </Text>
+            )}
+            endContent={<Text type="code" color="secondary">{formatTime(segment.start)}</Text>}
+          />
+        )) : (
+          <ListItem
+            label={isRecording ? "말씀해 주세요" : "아직 기록된 문장이 없습니다"}
+            description={isRecording ? "듣고 있는 문장이 이곳에서 계속 업데이트됩니다." : "오른쪽 위 마이크 버튼을 누르면 실시간 받아쓰기가 시작됩니다."}
+            startContent={<StatusDot variant={isRecording ? "error" : "neutral"} label={isRecording ? "듣는 중" : "대기 중"} isPulsing={isRecording} />}
+          />
+        )}
+      </List>
+    </Stack>
+  );
+}
+
+function LiveStructurePanel({ segments, isRecording }) {
+  const trees = useMemo(() => buildDialogueMapTrees(segments), [segments]);
+  const layout = useMemo(() => buildDialogueMapLayout(trees), [trees]);
+  const activeNodeId = isRecording ? trees.at(-1)?.children.at(-1)?.id : null;
+  const presentation = {
+    topic: { fill: "var(--color-background-muted)", stroke: "var(--color-border-emphasized)", text: "var(--color-text-primary)", label: "주제" },
+    question: { fill: "var(--color-background-yellow)", stroke: "var(--color-border-yellow)", text: "var(--color-text-yellow)", symbol: "?", label: "질문" },
+    idea: { fill: "var(--color-background-blue)", stroke: "var(--color-border-blue)", text: "var(--color-text-blue)", symbol: "✦", label: "아이디어" },
+    pro: { fill: "var(--color-background-green)", stroke: "var(--color-border-green)", text: "var(--color-text-green)", symbol: "+", label: "장점" },
+    con: { fill: "var(--color-background-red)", stroke: "var(--color-border-red)", text: "var(--color-text-red)", symbol: "−", label: "우려" }
+  };
+
+  return (
+    <Stack data-live-structure-panel height="100%" style={{ minHeight: 0 }}>
+      <Stack padding={5} style={{ borderBottom: "var(--border-width) solid var(--color-border)" }}>
+        <Stack direction="horizontal" justify="between" align="center" gap={3}>
+          <Heading level={2}>구조도</Heading>
+          <StatusDot
+            variant={isRecording ? "error" : "neutral"}
+            label={isRecording ? "분석 중" : `${trees.length}개 주제`}
+            isPulsing={isRecording}
+          />
+        </Stack>
+      </Stack>
+      <Stack isScrollable height="100%" padding={3} style={{ minHeight: 0, background: "var(--color-background-muted)" }}>
+        {trees.length ? (
+          <svg
+            data-dialogue-tree
+            viewBox={`0 0 ${layout.width} ${layout.height}`}
+            width="100%"
+            height={layout.height}
+            role="img"
+            aria-label={`${trees.length}개 주제와 ${layout.nodes.length - trees.length}개 발화를 연결한 대화 구조도`}
+            style={{ display: "block", flex: "none" }}
+          >
+            <title>실제 발화에서 생성한 대화 구조도</title>
+            <defs>
+              <marker id="dialogue-tree-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--color-border-blue)" />
+              </marker>
+            </defs>
+            {layout.edges.map((edge) => (
+              <path
+                key={edge.id}
+                d={edge.path}
+                fill="none"
+                stroke="var(--color-border-blue)"
+                strokeWidth="var(--border-width)"
+                markerEnd="url(#dialogue-tree-arrow)"
+              />
+            ))}
+            {layout.nodes.map((node) => {
+              const colors = presentation[node.kind] || presentation.idea;
+              const live = node.pending || node.id === activeNodeId;
+              const symbol = node.kind === "topic" ? String(node.topicIndex + 1) : colors.symbol;
+              return (
+                <g key={node.id} aria-label={`${colors.label} ${node.label}`}>
+                  <rect
+                    x={node.x}
+                    y={node.y}
+                    width={node.width}
+                    height={node.height}
+                    rx="var(--radius-element)"
+                    fill={colors.fill}
+                    stroke={live ? "var(--color-accent)" : colors.stroke}
+                    strokeWidth={live ? "var(--spacing-0-5)" : "var(--border-width)"}
+                  />
+                  <circle cx={node.x + 20} cy={node.y + 22} r="11" fill={colors.stroke} />
+                  <text x={node.x + 20} y={node.y + 26} textAnchor="middle" fill="var(--color-background-surface)" fontSize="var(--font-size-sm)" fontWeight="var(--font-weight-bold)">{symbol}</text>
+                  <text x={node.x + 42} y={node.y + 22} fill="var(--color-text-primary)" fontSize="var(--font-size-sm)" fontWeight="var(--font-weight-semibold)">
+                    {node.labelLines.map((line, lineIndex) => <tspan key={`${node.id}-line-${lineIndex}`} x={node.x + 42} dy={lineIndex === 0 ? 0 : 16}>{line}</tspan>)}
+                  </text>
+                  <text x={node.x + 42} y={node.y + 60} fill="var(--color-text-secondary)" fontSize="var(--font-size-xs)">{node.meta}</text>
+                  {live && <circle cx={node.x + node.width - 14} cy={node.y + 14} r="4" fill="var(--color-accent)" />}
+                </g>
+              );
+            })}
+          </svg>
+        ) : (
+          <Center width="100%" height="100%" padding={6}>
+            <EmptyState
+              isCompact
+              icon={<Icon icon="microphone" />}
+              title={isRecording ? "첫 주제를 찾고 있습니다" : "아직 구조화할 대화가 없습니다"}
+              description={isRecording ? "발화가 이어지면 주제 트리가 자동으로 추가됩니다." : "녹음을 시작하면 실제 대화 순서대로 구조가 만들어집니다."}
+            />
+          </Center>
+        )}
+      </Stack>
+    </Stack>
+  );
+}
+
+function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, user }) {
+  const { desktop, reducedMotion } = useViewport();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
+  const displayedSegments = recording.segments;
+  const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
+  const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
+  const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";
+
+  const copyText = async (value, successMessage) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyNotice(successMessage);
+    } catch {
+      setCopyNotice("복사하지 못했습니다. 다시 시도해 주세요.");
+    }
+    window.setTimeout(() => setCopyNotice(""), 1800);
+  };
+
+  const toggleRecording = () => {
+    if (recording.isRecording) return recording.stop();
+    if (meetingLimitReached) return onOpenBilling();
+    return recording.start();
+  };
+
+  return (
+    <Layout
+      height="fill"
+      header={(
+        <LayoutHeader height={64} hasDivider label="실시간 받아쓰기 헤더">
+          <Toolbar
+            label="실시간 받아쓰기 도구"
+            size="lg"
+            startContent={!desktop ? <IconButton label="회의 나가기" icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} /> : undefined}
+            centerContent={(
+              <Stack direction="horizontal" align="center" gap={2}>
+                <StatusDot variant={recording.isRecording ? "error" : "neutral"} label={recording.isRecording ? "녹음 중" : "대기 중"} isPulsing={recording.isRecording} />
+                <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-xl)", fontVariantNumeric: "tabular-nums" }}>
+                  {formatTime(recording.elapsed)}
+                </Text>
+              </Stack>
+            )}
+            endContent={!desktop ? (
+              <IconButton
+                label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
+                variant={recording.isRecording ? "destructive" : "primary"}
+                onClick={toggleRecording}
+                isLoading={recording.isBusy}
+              />
+            ) : undefined}
+          />
+        </LayoutHeader>
+      )}
+      content={(
+        <LayoutContent padding={desktop ? 6 : 0} style={{ minHeight: 0, overflow: "hidden", background: desktop ? "var(--color-background-body)" : "var(--color-background-surface)" }}>
+          {desktop ? (
+            <Stack data-desktop-meeting-workspace direction="horizontal" gap={4} height="100%" style={{ minHeight: 0 }}>
+              <Stack
+                width="32%"
+                height="100%"
+                style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", flex: "none", minHeight: 0 }}
+              >
+                <LiveStructurePanel segments={displayedSegments} isRecording={recording.isRecording} />
+              </Stack>
+              <Stack
+                width="100%"
+                height="100%"
+                style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}
+              >
+                <LiveTranscriptFeed segments={displayedSegments} isRecording={recording.isRecording} reducedMotion={reducedMotion} />
+              </Stack>
+            </Stack>
+          ) : (
+            <Stack height="100%" style={{ minHeight: 0 }}>
+              {recording.notice && (
+                <Section padding={3} dividers={["bottom"]}>
+                  <Text type="supporting" color="secondary">{recording.notice}</Text>
+                </Section>
+              )}
+              <LiveTranscriptFeed segments={displayedSegments} isRecording={recording.isRecording} reducedMotion={reducedMotion} />
+            </Stack>
+          )}
+        </LayoutContent>
+      )}
+      footer={desktop ? (
+        <LayoutFooter label="회의 제어">
+          <Stack data-desktop-meeting-controls width="100%" paddingInline={6} paddingBlock={4} style={{ background: "var(--color-background-body)" }}>
+            <Toolbar
+              label="데스크톱 회의 제어"
+              size="lg"
+              startContent={(
+                <Button
+                  label="회의 나가기"
+                  icon={<Icon icon="chevronLeft" />}
+                  variant="ghost"
+                  onClick={onLeave}
+                  style={{ color: "var(--color-text-red)" }}
+                />
+              )}
+              centerContent={(
+                <Card padding={3} style={{ borderRadius: "var(--radius-full)", boxShadow: "var(--shadow-med)" }}>
+                  <Stack data-meeting-participant-control direction="horizontal" align="center" gap={3}>
+                    <Avatar name={user?.name || "나"} size="lg" />
+                    <Stack gap={0.5} width="calc(var(--spacing-10) * 5)" style={{ minWidth: 0 }}>
+                      <Text weight="semibold" maxLines={1}>{user?.name || "나"}</Text>
+                      <Text type="supporting" color="secondary" maxLines={1}>{user?.vocabulary?.roles?.[0] || "회의 참가자"}</Text>
+                    </Stack>
+                    <IconButton
+                      label={recording.isRecording ? "기록 중지" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                      tooltip={recording.isRecording ? "기록 중지" : "기록 시작"}
+                      icon={<Icon icon={recording.isRecording ? "stop" : meetingLimitReached ? "info" : "microphone"} />}
+                      variant={recording.isRecording ? "destructive" : "primary"}
+                      size="lg"
+                      onClick={toggleRecording}
+                      isLoading={recording.isBusy}
+                    />
+                  </Stack>
+                </Card>
+              )}
+              endContent={(
+                <Stack
+                  data-room-invite-panel
+                  width="calc(var(--spacing-10) * 9)"
+                  style={{
+                    maxHeight: inviteOpen ? "calc(var(--spacing-10) * 5)" : "calc(var(--spacing-10) + var(--spacing-4))",
+                    overflow: "hidden",
+                    borderRadius: "var(--radius-container)",
+                    background: "var(--color-background-surface)",
+                    boxShadow: "var(--shadow-low)",
+                    transition
+                  }}
+                >
+                  <Stack
+                    as="button"
+                    type="button"
+                    direction="horizontal"
+                    align="center"
+                    justify="between"
+                    gap={3}
+                    width="100%"
+                    height="calc(var(--spacing-10) + var(--spacing-4))"
+                    paddingInline={4}
+                    onClick={() => setInviteOpen((open) => !open)}
+                    aria-expanded={inviteOpen}
+                    style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "start", flex: "none" }}
+                  >
+                    <Stack gap={0.5}>
+                      <Text type="supporting" color="secondary">방 코드</Text>
+                      <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-xl)", letterSpacing: "var(--spacing-1)" }}>{roomCode}</Text>
+                    </Stack>
+                    <Stack direction="horizontal" gap={2} align="center">
+                      <Text type="supporting" color="secondary">링크</Text>
+                      <Stack style={{ transform: inviteOpen ? "rotate(180deg)" : "rotate(0deg)", transition }}>
+                        <Icon icon="chevronDown" color="secondary" />
+                      </Stack>
+                    </Stack>
+                  </Stack>
+                  <Stack paddingInline={4} paddingBlockEnd={4} gap={3} style={{ opacity: inviteOpen ? 1 : 0, transform: inviteOpen ? "translateY(0)" : "translateY(var(--spacing-4))", transition }}>
+                    <Text type="supporting" color="secondary" maxLines={1}>{roomLink}</Text>
+                    <Stack direction="horizontal" gap={2}>
+                      <Button label="코드 복사" icon={<Icon icon="copy" />} variant="secondary" width="100%" onClick={() => copyText(roomCode, "방 코드를 복사했습니다.")} />
+                      <Button label="링크 복사" icon={<Icon icon="link" />} variant="primary" width="100%" onClick={() => copyText(roomLink, "초대 링크를 복사했습니다.")} />
+                    </Stack>
+                    {copyNotice && <Text type="supporting" color="accent">{copyNotice}</Text>}
+                  </Stack>
+                </Stack>
+              )}
+            />
+          </Stack>
+        </LayoutFooter>
+      ) : (
+        <LayoutFooter hasDivider label="회의 정보">
+          <Stack
+            data-room-invite-panel
+            style={{
+              maxHeight: inviteOpen ? "calc(var(--spacing-10) * 6)" : "calc(var(--spacing-10) + var(--spacing-3))",
+              overflow: "hidden",
+              background: "var(--color-background-surface)",
+              transition
+            }}
+          >
+            <Stack
+              as="button"
+              type="button"
+              direction="horizontal"
+              align="center"
+              justify="between"
+              gap={3}
+              width="100%"
+              height="calc(var(--spacing-10) + var(--spacing-3))"
+              paddingInline={4}
+              onClick={() => setInviteOpen((open) => !open)}
+              aria-expanded={inviteOpen}
+              style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "start", flex: "none" }}
+            >
+              <Stack direction="horizontal" gap={2} align="center">
+                <Stack width="var(--spacing-8)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} />
+                <Text weight="semibold">회의 정보</Text>
+              </Stack>
+              <Stack direction="horizontal" gap={2} align="center">
+                <Text type="code" weight="semibold" style={{ letterSpacing: "var(--spacing-0-5)" }}>{roomCode}</Text>
+                <Stack style={{ transform: inviteOpen ? "rotate(180deg)" : "rotate(0deg)", transition }}>
+                  <Icon icon="chevronDown" color="secondary" />
+                </Stack>
+              </Stack>
+            </Stack>
+
+            <Stack paddingInline={4} paddingBlockEnd={4} gap={4} style={{ opacity: inviteOpen ? 1 : 0, transform: inviteOpen ? "translateY(0)" : "translateY(var(--spacing-4))", transition }}>
+              <Stack direction="horizontal" justify="between" align="center" gap={3}>
+                <Stack gap={0.5}>
+                  <Text type="supporting" color="secondary">방 코드</Text>
+                  <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-2xl)", letterSpacing: "var(--spacing-2)" }}>{roomCode}</Text>
+                </Stack>
+                <IconButton label="방 코드 복사" icon={<Icon icon="copy" />} variant="secondary" onClick={() => copyText(roomCode, "방 코드를 복사했습니다.")} />
+              </Stack>
+              <Stack gap={2}>
+                <Text type="supporting" color="secondary" maxLines={1}>{roomLink}</Text>
+                <Button label="초대 링크 복사" icon={<Icon icon="copy" />} variant="primary" width="100%" onClick={() => copyText(roomLink, "초대 링크를 복사했습니다.")} />
+              </Stack>
+              {copyNotice && <Text type="supporting" color="accent">{copyNotice}</Text>}
+            </Stack>
+          </Stack>
+        </LayoutFooter>
+      )}
+    />
+  );
+}
+
 function meetingDate(value) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recording }) {
+function LegacyDashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recording }) {
   const { compact, reducedMotion } = useViewport();
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountTab, setAccountTab] = useState("bio");
@@ -1624,6 +2073,307 @@ function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recordi
   );
 }
 
+function meetingDurationLabel(duration) {
+  const minutes = Math.max(1, Math.round((Number(duration) || 0) / 60));
+  return `${minutes}분`;
+}
+
+function meetingRoomCode(meeting) {
+  const explicitCode = meeting?.roomCode || meeting?.code;
+  const source = explicitCode || meeting?.id || "MEET";
+  return String(source).replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase().padEnd(4, "V");
+}
+
+function meetingParticipantSummary(meeting, fallbackName) {
+  const explicit = Array.isArray(meeting?.participants) ? meeting.participants : [];
+  const fromSegments = Array.isArray(meeting?.segments)
+    ? meeting.segments.map(({ speaker }) => speaker).filter(Boolean)
+    : [];
+  const names = [...new Set([...explicit, ...fromSegments])];
+  const visibleNames = (names.length ? names : [fallbackName]).slice(0, 3);
+  const count = Number(meeting?.participantCount || meeting?.speakerCount) || Math.max(1, names.length);
+  return { names: visibleNames, count };
+}
+
+function MeetingEntryScreen({ roomCode }) {
+  return (
+    <Layout height="fill" data-meeting-entry-loading>
+      <LayoutContent padding={0} style={{ background: "var(--brand-cream)" }}>
+        <Center width="100%" height="100%" padding={6}>
+          <Stack align="center" gap={6} maxWidth={420}>
+            <MascotArtwork kind="connecting" alt="회의실 연결을 준비하는 민트 캐릭터" size="calc(var(--spacing-10) * 3)" />
+            <Stack align="center" gap={2}>
+              <Heading level={1} type="display-3" textWrap="balance">회의실을 준비하고 있어요</Heading>
+              <Text color="secondary" justify="center">마이크와 실시간 받아쓰기를 연결하는 중입니다.</Text>
+            </Stack>
+            <Stack direction="horizontal" gap={3} align="center">
+              <Spinner size="lg" aria-label="회의실 연결 중" />
+              <Text type="code" weight="semibold">{roomCode}</Text>
+            </Stack>
+          </Stack>
+        </Center>
+      </LayoutContent>
+    </Layout>
+  );
+}
+
+function DashboardPage({ context, onStart, onOpen, onNavigate, onLogout, recording, entryPhase = "idle" }) {
+  const { compact, reducedMotion } = useViewport();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountTab, setAccountTab] = useState("bio");
+  const [dockUp, setDockUp] = useState(false);
+  const [code, setCode] = useState(["", "", "", ""]);
+  const [profileIntroduction, setProfileIntroduction] = useState(() => window.localStorage.getItem(`voice-partition:bio:${context.user.id}`) || "");
+  const [profileSaved, setProfileSaved] = useState(false);
+  const codeRefs = useRef([]);
+  const dockCollapseTimerRef = useRef(null);
+  const recentMeetings = recording.meetings.slice(0, 8);
+  const roles = context.user.vocabulary?.roles || [];
+  const knownTerms = context.user.vocabulary?.knownTerms || [];
+  const ready = code.every(Boolean);
+  const nextCodeIndex = code.findIndex((character) => !character);
+  const transition = reducedMotion ? "none" : "all var(--duration-slow) var(--motion-navigation-ease)";
+
+  useEffect(() => () => window.clearTimeout(dockCollapseTimerRef.current), []);
+
+  const setCodeCharacter = (index, value) => {
+    const character = String(value || "").replace(/[^a-zA-Z0-9]/g, "").slice(-1).toUpperCase();
+    setCode((current) => current.map((item, itemIndex) => itemIndex === index ? character : item));
+    if (character && index < codeRefs.current.length - 1) codeRefs.current[index + 1]?.focus();
+  };
+  const handleCodeKey = (index, event) => {
+    if (event.key === "Backspace" && !code[index] && index > 0) {
+      setCode((current) => current.map((item, itemIndex) => itemIndex === index - 1 ? "" : item));
+      codeRefs.current[index - 1]?.focus();
+    }
+    if (event.key === "Enter" && ready) onStart(code.join(""));
+  };
+  const scheduleDockCollapse = () => {
+    window.clearTimeout(dockCollapseTimerRef.current);
+    dockCollapseTimerRef.current = window.setTimeout(() => {
+      if (!codeRefs.current.includes(document.activeElement)) setDockUp(false);
+    }, 360);
+  };
+
+  const accountContent = accountTab === "bio" ? (
+    <Stack gap={3}>
+      <Text type="supporting" color="secondary">업무 배경은 회의 중 낯선 용어의 설명 수준을 맞추는 데만 사용됩니다.</Text>
+      <TextArea
+        label="나의 업무 배경"
+        value={profileIntroduction}
+        onChange={(value) => { setProfileIntroduction(value); setProfileSaved(false); }}
+        placeholder={roles.length ? `${roles.join(" · ")} 업무를 담당합니다. ${knownTerms.length ? `${knownTerms.slice(0, 6).join(", ")} 용어에 익숙합니다.` : "회의 중 낯선 용어는 쉽게 설명해 주세요."}` : "업무 역할과 익숙한 분야를 적어 주세요."}
+        maxLength={300}
+        width="100%"
+      />
+      <Stack direction="horizontal" justify="end">
+        <Button label={profileSaved ? "저장됨" : "자기소개 저장"} variant="primary" size="sm" onClick={() => { window.localStorage.setItem(`voice-partition:bio:${context.user.id}`, profileIntroduction); setProfileSaved(true); }} />
+      </Stack>
+    </Stack>
+  ) : accountTab === "settings" ? (
+    <Stack gap={3}>
+      <TextInput label="표시 이름" value={context.user.name} onChange={() => undefined} isReadOnly width="100%" />
+      <Selector
+        label="입력 마이크"
+        value={recording.selectedAudioInputId}
+        onChange={recording.setSelectedAudioInputId}
+        options={[{ value: "", label: "시스템 기본 마이크" }, ...recording.audioInputs.map(({ deviceId, label }, index) => ({ value: deviceId, label: label || `마이크 ${index + 1}` }))]}
+        width="100%"
+      />
+      <Stack direction="horizontal" gap={3} align="center" padding={3} style={{ borderRadius: "var(--radius-container)", background: "var(--color-background-muted)" }}>
+        <StatusDot variant={microphoneLevelPresentation(recording.audioLevel, true).variant} label="입력 감도" />
+        <ProgressBar label="마이크 입력 감도" value={recording.audioLevel} isLabelHidden />
+        <Text type="supporting" color="secondary" maxLines={1}>{microphoneLevelPresentation(recording.audioLevel, true).label}</Text>
+      </Stack>
+    </Stack>
+  ) : (
+    <Stack gap={3}>
+      <Section variant="muted" padding={3}>
+        <Stack gap={0.5}>
+          <Text weight="medium">{context.user.email}</Text>
+          <Text type="supporting" color="secondary">{context.organization.name}</Text>
+        </Stack>
+      </Section>
+      <Stack direction={compact ? "vertical" : "horizontal"} gap={2}>
+        <Button label="플랜 및 결제" variant="primary" onClick={() => onNavigate("billing")} width={compact ? "100%" : undefined} />
+        <Button label="로그아웃" variant="destructive" onClick={onLogout} width={compact ? "100%" : undefined} />
+        <Button label="프로필 닫기" variant="ghost" onClick={() => setAccountOpen(false)} width={compact ? "100%" : undefined} />
+      </Stack>
+    </Stack>
+  );
+
+  return (
+    <Layout
+      height="fill"
+      data-home-entry-phase={entryPhase}
+      style={{
+        transform: entryPhase === "exiting" ? "translateY(100%) scale(0.985)" : "translateY(0) scale(1)",
+        transformOrigin: "center bottom",
+        transition: reducedMotion ? "none" : "transform var(--duration-medium-max) var(--motion-navigation-ease)",
+        pointerEvents: entryPhase === "idle" ? "auto" : "none"
+      }}
+      content={(
+        <LayoutContent
+          padding={0}
+          onPointerMove={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientY > bounds.top + bounds.height * 0.82) {
+              window.clearTimeout(dockCollapseTimerRef.current);
+              setDockUp(true);
+            } else if (!codeRefs.current.includes(document.activeElement)) scheduleDockCollapse();
+          }}
+          onPointerLeave={scheduleDockCollapse}
+          style={{ position: "relative", overflow: "hidden", background: "var(--color-background-surface)" }}
+        >
+          <Center width="100%" height="100%" paddingInline={compact ? 3 : 5} style={{ alignItems: "flex-start" }}>
+            <Stack width="100%" maxWidth="calc(var(--spacing-10) * 16)" height="100%" gap={4} paddingBlockStart={compact ? 3 : 6} paddingBlockEnd="calc(var(--spacing-10) * 3)" style={{ minHeight: 0 }}>
+              <Card
+                padding={0}
+                data-home-account
+                style={{
+                  maxHeight: accountOpen ? "calc(var(--spacing-10) * 12)" : "calc(var(--spacing-8) * 3)",
+                  overflow: "hidden",
+                  boxShadow: accountOpen ? "var(--shadow-med)" : "var(--shadow-low)",
+                  transition,
+                  flex: "none"
+                }}
+              >
+                <Stack
+                  as="button"
+                  type="button"
+                  direction="horizontal"
+                  align="center"
+                  gap={3}
+                  width="100%"
+                  height="calc(var(--spacing-8) * 3)"
+                  paddingInline={compact ? 4 : 5}
+                  onClick={() => setAccountOpen((open) => !open)}
+                  aria-expanded={accountOpen}
+                  style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "start", flex: "none" }}
+                >
+                  <Avatar name={context.user.name} size="lg" />
+                  <Stack gap={0.5} width="100%" style={{ minWidth: 0 }}>
+                    <Heading level={3} maxLines={1}>{context.user.name}</Heading>
+                    <Text type="supporting" color="secondary" maxLines={1}>{roles.length ? roles.join(" · ") : "역할을 설정해 주세요"}</Text>
+                  </Stack>
+                  {!compact && !accountOpen && <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>프로필 열기</Text>}
+                  <Stack style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)", transition }}><Icon icon="chevronDown" color="secondary" /></Stack>
+                </Stack>
+                <Stack paddingInline={compact ? 4 : 5} paddingBlockEnd={5} gap={3} style={{ opacity: accountOpen ? 1 : 0, transform: accountOpen ? "translateY(0)" : "translateY(calc(var(--spacing-2) * -1))", transition, pointerEvents: accountOpen ? "auto" : "none" }}>
+                  <SegmentedControl value={accountTab} onChange={setAccountTab} label="프로필 설정" layout="fill">
+                    <SegmentedControlItem value="bio" label="자기소개" />
+                    <SegmentedControlItem value="settings" label="마이크·이름" />
+                    <SegmentedControlItem value="account" label="계정" />
+                  </SegmentedControl>
+                  {accountContent}
+                </Stack>
+              </Card>
+
+              <Stack isScrollable height="100%" paddingBlockEnd={8} style={{ minHeight: 0 }}>
+                <List
+                  hasDividers
+                  density="spacious"
+                  header={(
+                    <Stack direction="horizontal" justify="between" align="center" paddingInline={1} paddingBlockEnd={2}>
+                      <Heading level={3}>참여한 회의</Heading>
+                      <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>최근 {recentMeetings.length}건</Text>
+                    </Stack>
+                  )}
+                >
+                  {recentMeetings.length ? recentMeetings.map((meeting) => {
+                    const participants = meetingParticipantSummary(meeting, context.user.name);
+                    return (
+                      <ListItem
+                        key={meeting.id}
+                        label={<Text weight="semibold" maxLines={1}>{meeting.title}</Text>}
+                        description={`${meetingDate(meeting.startedAt)} · ${meetingDurationLabel(meeting.duration)}`}
+                        onClick={() => onOpen(meeting)}
+                        endContent={(
+                          <Stack direction="horizontal" gap={2} align="center" style={{ flex: "none" }}>
+                            {!compact && <AvatarGroup size="sm">{participants.names.map((name, index) => <Avatar key={`${name}-${index}`} name={name} />)}</AvatarGroup>}
+                            <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>{participants.count}명</Text>
+                            <Text type="code" color="secondary" style={{ whiteSpace: "nowrap", background: "var(--color-background-muted)", borderRadius: "var(--radius-inner)", padding: "var(--spacing-1) var(--spacing-2)" }}>{meetingRoomCode(meeting)}</Text>
+                          </Stack>
+                        )}
+                      />
+                    );
+                  }) : (
+                    <ListItem
+                      label="아직 참여한 회의가 없습니다"
+                      description="아래의 방 코드 입력창에서 첫 회의를 시작해 보세요."
+                      startContent={<Avatar src={MASCOT_ART.empty} name="첫 회의 안내" size="md" tooltip={false} />}
+                    />
+                  )}
+                </List>
+              </Stack>
+            </Stack>
+          </Center>
+
+          <Card
+            padding={0}
+            data-home-dock
+            onPointerEnter={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
+            onPointerLeave={scheduleDockCollapse}
+            style={{
+              position: "absolute",
+              insetInlineStart: "50%",
+              bottom: 0,
+              width: compact ? "calc(100% - var(--spacing-6))" : "calc(var(--spacing-10) * 11)",
+              marginInlineStart: compact ? "calc((100% - var(--spacing-6)) / -2)" : "calc(var(--spacing-10) * -5.5)",
+              borderEndStartRadius: 0,
+              borderEndEndRadius: 0,
+              boxShadow: "var(--shadow-high)",
+              transform: dockUp ? "translateY(0)" : "translateY(68%)",
+              transition: reducedMotion ? "none" : "transform var(--duration-slow) var(--motion-navigation-ease)"
+            }}
+          >
+            <Stack paddingInline={compact ? 3 : 4} paddingBlockStart={2} paddingBlockEnd={4} gap={3}>
+              <Stack align="center" gap={2}>
+                <Stack width="var(--spacing-10)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} />
+                <Text weight="semibold">방 코드로 입장</Text>
+              </Stack>
+              <Stack direction="horizontal" gap={2} width="100%">
+                {code.map((character, index) => (
+                  <Stack
+                    as="input"
+                    key={index}
+                    ref={(element) => { codeRefs.current[index] = element; }}
+                    aria-label={`방 코드 ${index + 1}번째 문자`}
+                    value={character}
+                    placeholder="·"
+                    maxLength={1}
+                    onChange={(event) => setCodeCharacter(index, event.target.value)}
+                    onKeyDown={(event) => handleCodeKey(index, event)}
+                    onFocus={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
+                    onBlur={scheduleDockCollapse}
+                    width="100%"
+                    height="calc(var(--spacing-10) + var(--spacing-2))"
+                    style={{
+                      minWidth: 0,
+                      border: 0,
+                      borderRadius: "var(--radius-element)",
+                      background: character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
+                      boxShadow: `inset 0 0 0 var(--spacing-0-5) ${index === nextCodeIndex ? "var(--color-accent)" : character ? "var(--color-accent)" : "var(--color-border)"}`,
+                      color: "var(--color-text-primary)",
+                      fontFamily: "var(--font-family-code)",
+                      fontSize: "var(--font-size-xl)",
+                      fontWeight: "var(--font-weight-semibold)",
+                      textAlign: "center",
+                      textTransform: "uppercase",
+                      outline: "none",
+                      transition
+                    }}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          </Card>
+        </LayoutContent>
+      )}
+    />
+  );
+}
+
 function DocumentsPage({ meetings, onOpen, onDelete }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1644,12 +2394,25 @@ function DocumentsPage({ meetings, onOpen, onDelete }) {
   return (
     <>
       <Layout
+        contentWidth={1040}
         header={<PageHeader title="회의 문서" description="구조, 전사, 용어와 액션을 한 문서에서 검토합니다." />}
         content={(
-          <LayoutContent padding={4}>
-            <Stack gap={3}>
+          <LayoutContent padding={6}>
+            <Stack gap={6}>
               <Feedback message={feedback} onDismiss={() => setFeedback("")} />
-              <List hasDividers density="spacious" header={<Heading level={2}>최근 문서</Heading>}>
+              <List
+                hasDividers
+                density="spacious"
+                header={(
+                  <Stack direction="horizontal" justify="between" align="end" paddingBlockEnd={2}>
+                    <Stack gap={1}>
+                      <Heading level={2}>최근 문서</Heading>
+                      <Text color="secondary">회의가 끝나면 한 줄씩 자동으로 쌓입니다.</Text>
+                    </Stack>
+                    <Text type="supporting" color="secondary">{meetings.length}개</Text>
+                  </Stack>
+                )}
+              >
                 {meetings.length ? meetings.map((meeting) => {
                   const status = meetingStatusPresentation(meeting.status);
                   const controls = (
@@ -1677,6 +2440,7 @@ function DocumentsPage({ meetings, onOpen, onDelete }) {
 }
 
 function DictionaryPage({ terms, onRefresh }) {
+  const { compact } = useViewport();
   const [newTerm, setNewTerm] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busyTerm, setBusyTerm] = useState("");
@@ -1703,30 +2467,35 @@ function DictionaryPage({ terms, onRefresh }) {
   };
   return (
     <Layout
+      contentWidth={1040}
       header={<PageHeader title="개인 용어 사전" description="아는 용어는 설명을 접고, 낯선 용어에만 업무 관점의 풀이를 제공합니다." />}
       content={(
-        <LayoutContent padding={4}>
-          <Stack gap={4} maxWidth={960}>
+        <LayoutContent padding={6}>
+          <Stack gap={6}>
             <Feedback message={feedback} status="warning" onDismiss={() => setFeedback("")} />
-            <Banner status="info" title="이 지식 상태는 본인에게만 보입니다." description="회의 참여자와 조직 관리자는 이해 확률이나 피드백 기록을 조회할 수 없습니다. 직접 선택한 피드백이 자동 추정보다 항상 우선합니다." />
-            <Card padding={4}>
+            <Section variant="muted" padding={4}>
               <Stack as="form" direction="horizontal" gap={2} align="end" onSubmit={addKnownTerm}>
                 <TextInput label="내가 이미 아는 용어 추가" value={newTerm} onChange={setNewTerm} placeholder="실제 업무 용어 입력" width="100%" />
-                <Button type="submit" label="아는 개념 추가" variant="primary" isLoading={busyTerm === newTerm.trim()} isDisabled={!newTerm.trim() || Boolean(busyTerm)} />
+                <Button type="submit" label="아는 개념 추가" variant="primary" isLoading={Boolean(busyTerm) && busyTerm === newTerm.trim()} isDisabled={!newTerm.trim() || Boolean(busyTerm)} />
               </Stack>
-            </Card>
-            <List hasDividers density="spacious" header={<Heading level={2}>실제 회의에서 축적된 용어</Heading>}>
+            </Section>
+            <List
+              hasDividers
+              density="spacious"
+              header={<Stack gap={1} paddingBlockEnd={2}><Heading level={2}>회의에서 나온 용어</Heading><Text color="secondary">이해 상태는 본인에게만 보이며 직접 선택한 답을 우선합니다.</Text></Stack>}
+            >
               {terms.length ? terms.map((term) => {
                 const known = term.isKnown;
                 const evidence = term.meetingCount ? `${term.meetingCount}개 회의 · ${term.occurrences}회 감지` : "직접 등록한 기지식";
                 const percentage = Math.round((term.knowledge?.pKnown ?? (known ? 1 : 0.35)) * 100);
                 const statusLabel = known ? "이해함" : term.knowledge?.status === "unknown" ? "설명 필요" : "학습 중";
+                const action = <Button label={known ? "잘 모르겠어요" : "이제 알아요"} variant="ghost" size="sm" width={compact ? "100%" : undefined} isLoading={busyTerm === term.term} isDisabled={Boolean(busyTerm) && busyTerm !== term.term} onClick={() => submitEvidence(term.term, known ? "mark_unknown" : "mark_known")} />;
                 return <ListItem
                   key={term.conceptId || term.term}
                   label={term.term}
-                  description={<Stack gap={2}><Text type="supporting">{term.definition || "직접 등록한 개념입니다."} · {evidence}</Text><ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel /><Text type="supporting">{term.knowledge?.evidenceCount ? `내 피드백 ${term.knowledge.evidenceCount}개 기반` : "초기 추정"}</Text></Stack>}
-                  startContent={<Token label={statusLabel} color={known ? "green" : term.knowledge?.status === "unknown" ? "red" : "yellow"} size="sm" />}
-                  endContent={<Button label={known ? "잘 모르겠어요" : "이제 알아요"} variant="ghost" size="sm" isLoading={busyTerm === term.term} isDisabled={Boolean(busyTerm) && busyTerm !== term.term} onClick={() => submitEvidence(term.term, known ? "mark_unknown" : "mark_known")} />}
+                  description={<Stack gap={2}>{compact && <Stack direction="horizontal"><Token label={statusLabel} color={known ? "green" : term.knowledge?.status === "unknown" ? "red" : "yellow"} size="sm" /></Stack>}<Text type="supporting">{term.definition || "직접 등록한 개념입니다."} · {evidence}</Text><ProgressBar label={`이해 가능성 ${percentage}%`} value={percentage} hasValueLabel /><Text type="supporting">{term.knowledge?.evidenceCount ? `내 피드백 ${term.knowledge.evidenceCount}개 기반` : "초기 추정"}</Text>{compact && action}</Stack>}
+                  startContent={compact ? undefined : <Token label={statusLabel} color={known ? "green" : term.knowledge?.status === "unknown" ? "red" : "yellow"} size="sm" />}
+                  endContent={compact ? undefined : action}
                 />;
               }) : <ListItem label="아직 축적된 용어가 없습니다" description="회의를 구조 분석하면 실제 발화에서 발견된 낯선 용어가 여기에 저장됩니다." startContent={<Icon icon="info" color="secondary" />} />}
             </List>
@@ -1851,17 +2620,18 @@ function SettingsPage({ context, recording, billing, onOpenBilling }) {
   return (
     <>
       <Layout
-        header={<PageHeader title="조직 및 음성 설정" description="구성원, 초대 코드와 조직 전용 화자 프로필을 관리합니다." />}
+        contentWidth={1120}
+        header={<PageHeader title="설정" description="구성원과 회의에서 식별할 목소리를 관리합니다." />}
         content={(
-        <LayoutContent padding={compact ? 3 : 4}>
+        <LayoutContent padding={compact ? 3 : 6}>
           <Stack gap={6}>
             {feedback && <Feedback message={feedback} status={feedback.includes("등록했습니다") || feedback.includes("반영했습니다") || feedback.includes("복사") ? "success" : "info"} onDismiss={() => setFeedback("")} />}
             <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
               <Stack gap={6} width="100%">
-            <Section dividers={["bottom"]} paddingInline={0}>
+            <Section paddingInline={compact ? 3 : 0}>
               <Stack gap={3}>
                 <Heading level={2}>조직</Heading>
-                <Card variant="muted" padding={4}>
+                <Section variant="muted" padding={4}>
                   <Stack direction={compact ? "vertical" : "horizontal"} justify="between" align={compact ? "stretch" : "center"} gap={3}>
                     <Stack gap={1}>
                       <Text weight="semibold">{context.organization.name}</Text>
@@ -1872,13 +2642,13 @@ function SettingsPage({ context, recording, billing, onOpenBilling }) {
                       <Button label="초대 코드 복사" variant="secondary" size="sm" icon={<Icon icon="copy" />} onClick={copyInvite} />
                     </Stack>
                   </Stack>
-                </Card>
+                </Section>
                 <List hasDividers header={<Heading level={3}>구성원</Heading>}>
                   {members.map((member) => <ListItem key={member.id} label={member.name} description={member.email} startContent={<Avatar name={member.name} size="sm" />} endContent={<Token label={member.role === "owner" ? "관리자" : "멤버"} color={member.role === "owner" ? "teal" : "default"} size="sm" />} />)}
                 </List>
               </Stack>
             </Section>
-            <Section paddingInline={0}>
+            <Section paddingInline={compact ? 3 : 0}>
               <Stack gap={4}>
                 <Stack gap={1}>
                   <Stack direction="horizontal" justify="between" align="center" gap={2}>
@@ -2065,16 +2835,15 @@ function Workspace({ context, onContextChange, onLogout }) {
     const requestedCode = new URLSearchParams(window.location.search).get("room")?.toUpperCase();
     return /^[A-Z0-9]{4}$/.test(requestedCode || "") ? requestedCode : "A7K2";
   });
-  const [navigationExpanded, setNavigationExpanded] = useState(false);
-  const navigationInteractionRef = useRef({ hovered: false, focused: false, pointerPress: false });
-  const navigationCollapseTimerRef = useRef(null);
+  const [meetingEntryPhase, setMeetingEntryPhase] = useState("idle");
+  const meetingEntryTimersRef = useRef([]);
   const recording = useRecording();
   const navItems = [
-    ["home", "모든 회의", "calendar"],
+    ["home", "홈", "calendar"],
     ["record", "실시간 기록", "microphone"],
-    ["documents", "정리된 문서", "search"],
-    ["dictionary", "용어집", "info"],
-    ["settings", "멤버 및 설정", "wrench"]
+    ["documents", "회의 문서", "search"],
+    ["dictionary", "용어 사전", "info"],
+    ["settings", "설정", "wrench"]
   ];
 
   const refreshVocabulary = async () => {
@@ -2099,13 +2868,25 @@ function Workspace({ context, onContextChange, onLogout }) {
     return () => { cancelled = true; };
   }, [context.organization.id, recording.meetings.length, recording.speakers.length]);
 
-  useEffect(() => () => window.clearTimeout(navigationCollapseTimerRef.current), []);
+  useEffect(() => () => {
+    meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
 
   useEffect(() => {
-    const handleHistoryNavigation = () => setPage(workspacePageFromPath(window.location.pathname));
+    const handleHistoryNavigation = () => {
+      meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      meetingEntryTimersRef.current = [];
+      setMeetingEntryPhase("idle");
+      setPage(workspacePageFromPath(window.location.pathname));
+    };
     window.addEventListener("popstate", handleHistoryNavigation);
     return () => window.removeEventListener("popstate", handleHistoryNavigation);
   }, []);
+
+  useEffect(() => {
+    if (!window.voicePartitionDesktop?.setMeetingMode) return;
+    Promise.resolve(window.voicePartitionDesktop.setMeetingMode(page === "record")).catch(() => undefined);
+  }, [page]);
 
   const navigateTo = useCallback((nextPage) => {
     const path = workspacePathForPage(nextPage);
@@ -2113,155 +2894,91 @@ function Workspace({ context, onContextChange, onLogout }) {
     setPage(nextPage);
   }, []);
 
-  const openNavigation = () => {
-    window.clearTimeout(navigationCollapseTimerRef.current);
-    setNavigationExpanded(true);
+  const beginMeetingEntry = (prepare, nextRoomCode) => {
+    if (meetingEntryPhase !== "idle") return;
+    const normalizedRoomCode = String(nextRoomCode || "A7K2").toUpperCase();
+    meetingEntryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    meetingEntryTimersRef.current = [];
+    setRoomCode(normalizedRoomCode);
+    prepare();
+    setMeetingEntryPhase(reducedMotion ? "loading" : "exiting");
+
+    if (!reducedMotion) {
+      meetingEntryTimersRef.current.push(window.setTimeout(() => setMeetingEntryPhase("loading"), 520));
+    }
+    meetingEntryTimersRef.current.push(window.setTimeout(() => {
+      navigateTo("record");
+      setMeetingEntryPhase("idle");
+      meetingEntryTimersRef.current = [];
+    }, reducedMotion ? 360 : 1280));
   };
-  const scheduleNavigationCollapse = () => {
-    window.clearTimeout(navigationCollapseTimerRef.current);
-    navigationCollapseTimerRef.current = window.setTimeout(() => {
-      const interaction = navigationInteractionRef.current;
-      if (!interaction.hovered && !interaction.focused) setNavigationExpanded(false);
-    }, 420);
-  };
-  const navigationIsOpen = compact || navigationExpanded;
-  const navigationLabelStyle = {
-    opacity: navigationIsOpen ? 1 : 0,
-    transition: reducedMotion ? "none" : "opacity var(--duration-fast) var(--motion-navigation-ease)"
-  };
-  const navigationButtonContent = (label, icon) => (
-    <Stack direction="horizontal" gap={3} align="center" width="100%">
-      <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}>
-        <Icon icon={icon} color="inherit" />
-      </Stack>
-      <Text color="inherit" weight="medium" maxLines={1} style={navigationLabelStyle}>{label}</Text>
-    </Stack>
+
+  const startNewMeeting = (nextRoomCode = roomCode) => beginMeetingEntry(
+    () => recording.resetMeeting(),
+    nextRoomCode
+  );
+  const openMeeting = (meeting) => beginMeetingEntry(
+    () => recording.openMeeting(meeting),
+    meetingRoomCode(meeting)
   );
 
   const navigation = (
-    <Stack
-      as="nav"
-      aria-label="주요 화면"
-      width={navigationIsOpen ? "var(--layout-navigation-expanded-width)" : "var(--layout-rail-width)"}
-      height="100%"
-      justify="between"
-      padding={4}
-      onPointerEnter={() => {
-        navigationInteractionRef.current.hovered = true;
-        openNavigation();
-      }}
-      onPointerLeave={() => {
-        navigationInteractionRef.current.hovered = false;
-        scheduleNavigationCollapse();
-      }}
-      onPointerDownCapture={() => {
-        navigationInteractionRef.current.pointerPress = true;
-        navigationInteractionRef.current.focused = false;
-      }}
-      onPointerUpCapture={() => {
-        navigationInteractionRef.current.pointerPress = false;
-      }}
-      onPointerCancel={() => {
-        navigationInteractionRef.current.pointerPress = false;
-      }}
-      onFocusCapture={() => {
-        if (!navigationInteractionRef.current.pointerPress) navigationInteractionRef.current.focused = true;
-        openNavigation();
-      }}
-      onBlurCapture={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget)) return;
-        navigationInteractionRef.current.focused = false;
-        scheduleNavigationCollapse();
-      }}
-      style={{
-        background: "var(--brand-ink)",
-        color: "var(--color-rail-icon)",
-        flex: "none",
-        overflow: "hidden",
-        boxShadow: "var(--shadow-med)",
-        transition: reducedMotion ? "none" : "width var(--duration-medium) var(--motion-navigation-ease)"
-      }}
-    >
-      <Stack gap={5} width="100%">
-        <Button label={`${context.organization.name} 홈`} variant="ghost" width="100%" onClick={() => navigateTo("home")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
-          <Stack direction="horizontal" gap={3} align="center" width="100%">
-            <Stack width={40} height={40} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)", flex: "none" }}>
-              <Icon icon="microphone" color="inherit" label="Voice Partition" />
+    <TopNav
+      label="주요 화면"
+      heading={(
+        <TopNavHeading
+          logo={(
+            <Stack width={36} height={36} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
+              <Icon icon="microphone" color="inherit" label="보이스 파티션" />
             </Stack>
-            <Stack gap={0.5} style={navigationLabelStyle}>
-              <Text color="inherit" weight="semibold" maxLines={1}>{context.organization.name}</Text>
-              <Text color="inherit" type="supporting" maxLines={1}>Voice Partition</Text>
-            </Stack>
-          </Stack>
-        </Button>
-        <Stack gap={2} width="100%">
-        {navItems.map(([value, label, icon]) => (
-          <Button
-            key={value}
-            label={label}
-            variant="ghost"
-            size="lg"
-            width="100%"
-            onClick={() => navigateTo(value)}
-            style={{
-              color: page === "record" && value === "record" ? "var(--brand-ink)" : "inherit",
-              background: page === value ? value === "record" ? "var(--brand-coral)" : "var(--color-rail-selected)" : "transparent",
-              padding: 0,
-              justifyContent: "flex-start"
-            }}
-          >
-            {navigationButtonContent(label, icon)}
-          </Button>
-        ))}
+          )}
+          heading="보이스 파티션"
+          subheading={compact ? undefined : context.organization.name}
+        />
+      )}
+      startContent={navItems.map(([value, label, icon]) => (
+        <TopNavItem
+          key={value}
+          label={label}
+          href={workspacePathForPage(value)}
+          icon={<Icon icon={icon} color="inherit" />}
+          isSelected={page === value}
+          onClick={(event) => {
+            event.preventDefault();
+            navigateTo(value);
+          }}
+        />
+      ))}
+      endContent={(
+        <Stack direction="horizontal" gap={1} align="center">
+          {!compact && <Button label={`${billing?.subscription?.planId || "FREE"} 플랜`} variant="ghost" size="sm" onClick={() => navigateTo("billing")} />}
+          <IconButton label="내 설정" icon={<Icon icon="wrench" />} variant="ghost" size="md" onClick={() => navigateTo("settings")} />
+          <Avatar name={context.user.name} size="sm" />
         </Stack>
-      </Stack>
-      <Stack gap={2} width="100%">
-        <Button label="플랜 보기" variant="ghost" width="100%" onClick={() => navigateTo("billing")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
-          <Stack direction="horizontal" gap={3} align="center" width="100%">
-            <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Icon icon="info" color="inherit" /></Stack>
-            <Stack gap={0.5} style={navigationLabelStyle}>
-              <Text color="inherit" weight="semibold" maxLines={1}>{billing?.subscription?.planId || "FREE"} 플랜</Text>
-              <Text color="inherit" type="supporting" maxLines={1}>{billing?.usage?.meetings?.remaining == null ? "회의 무제한" : `회의 ${billing?.usage?.meetings?.remaining ?? 0}회 남음`}</Text>
-            </Stack>
-          </Stack>
-        </Button>
-        <Button label="내 설정" variant="ghost" width="100%" onClick={() => navigateTo("settings")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
-          <Stack direction="horizontal" gap={3} align="center" width="100%">
-            <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Avatar name={context.user.name} size="sm" /></Stack>
-            <Stack gap={0.5} style={navigationLabelStyle}>
-              <Text color="inherit" weight="semibold" maxLines={1}>{context.user.name}</Text>
-              <Text color="inherit" type="supporting" maxLines={1}>{context.user.email}</Text>
-            </Stack>
-          </Stack>
-        </Button>
-        <Button label="로그아웃" variant="ghost" size="sm" width="100%" onClick={onLogout} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
-          {navigationButtonContent("로그아웃", "chevronLeft")}
-        </Button>
-      </Stack>
-    </Stack>
+      )}
+    />
   );
 
   let content;
-  const startNewMeeting = (nextRoomCode = roomCode) => {
-    setRoomCode(String(nextRoomCode || "A7K2").toUpperCase());
-    recording.resetMeeting();
-    navigateTo("record");
-  };
-  const openMeeting = (meeting) => {
-    const meetingCode = String(meeting?.id || "A7K2").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase().padEnd(4, "V");
-    setRoomCode(meetingCode);
-    recording.openMeeting(meeting);
-    navigateTo("record");
-  };
-  if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} />;
+  if (page === "home") {
+    const dashboard = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} onNavigate={navigateTo} onLogout={onLogout} entryPhase={meetingEntryPhase} />;
+    content = (
+      <Stack height="100%" data-meeting-entry-stage style={{ position: "relative", overflow: "hidden", background: "var(--brand-cream)" }}>
+        <Stack height="100%" aria-hidden={meetingEntryPhase === "idle"} style={{ visibility: meetingEntryPhase === "idle" ? "hidden" : "visible" }}>
+            <MeetingEntryScreen roomCode={roomCode} />
+        </Stack>
+        {meetingEntryPhase !== "loading" && <Stack height="100%" style={{ position: "absolute", inset: 0 }}>{dashboard}</Stack>}
+      </Stack>
+    );
+  }
   else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} />;
-  else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={() => navigateTo("home")} roomCode={roomCode} />;
+  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={() => navigateTo("home")} roomCode={roomCode} user={context.user} />;
 
-  if (page === "home") return <AppShell variant="surface" height="fill" contentPadding={0}>{content}</AppShell>;
-  return <AppShell sideNav={navigation} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
+  if (page === "home" || page === "record") return <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>;
+  return <AppShell topNav={navigation} variant="surface" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }
 
 export default function App() {
@@ -2292,11 +3009,18 @@ export default function App() {
 
   if (loading) {
     return (
-      <AppShell variant="surface" height="fill" contentPadding={6}>
-        <Stack height="100%" justify="center" align="center" gap={3}>
-          <Heading level={1}>Voice Partition</Heading>
-          <ProgressBar label="워크스페이스 불러오는 중" isIndeterminate isLabelHidden />
-        </Stack>
+      <AppShell variant="surface" height="fill" contentPadding={0}>
+        <Center width="100%" height="100%" padding={6} style={{ background: "var(--brand-cream)" }}>
+          <Stack align="center" gap={5}>
+            <Stack width="calc(var(--spacing-10) + var(--spacing-4))" height="calc(var(--spacing-10) + var(--spacing-4))" align="center" justify="center" style={{ background: "var(--brand-mint)", color: "var(--brand-ink)", borderRadius: "var(--radius-container)" }}>
+              <Icon icon="microphone" color="inherit" label="보이스 파티션" size="lg" />
+            </Stack>
+            <Stack align="center" gap={2}>
+              <Heading level={1}>보이스 파티션</Heading>
+              <Spinner size="lg" label="워크스페이스를 불러오는 중입니다" />
+            </Stack>
+          </Stack>
+        </Center>
       </AppShell>
     );
   }
