@@ -46,7 +46,7 @@ function PlanCard({ plan, currentPlanId, paymentEnabled, busyPlan, onSelect }) {
           </Stack>
         </Stack>
         <Button
-          label={current ? "이용 중" : paid ? paymentEnabled ? `${plan.name} 선택` : "결제 설정 필요" : "기본 플랜"}
+          label={current ? "이용 중" : paid ? `${plan.name} 선택` : "기본 플랜"}
           variant={recommended && !current ? "primary" : "secondary"}
           width="100%"
           isDisabled={current || !paid || !paymentEnabled}
@@ -162,7 +162,6 @@ export function BillingPage({ context, onBillingChange }) {
           <Stack gap={6}>
             {feedback && <Banner status={feedback.status} title={feedback.message} isDismissable onDismiss={() => setFeedback(null)} />}
             {billing?.payment?.mode === "test" && <Banner status="info" title="테스트 결제 환경" description="실제 금액은 청구되지 않으며 Toss 테스트 결제창으로 진행됩니다." />}
-            {billing && !billing.payment.enabled && <Banner status="warning" title="Toss 테스트 키가 필요합니다" description="서버의 TOSS_CLIENT_KEY와 TOSS_SECRET_KEY를 설정하면 유료 플랜 결제를 테스트할 수 있습니다." />}
             {billing && (
               <Grid columns={{ minWidth: 240, max: 3, repeat: "fit" }} gap={3}>
                 <Card padding={4}>

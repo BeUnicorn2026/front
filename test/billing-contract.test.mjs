@@ -19,4 +19,5 @@ test("billing UI uses Astryx layout primitives without hand-built layout element
   assert.match(source, /<Grid columns=\{\{ minWidth: 260, max: 3, repeat: "fit" \}\}/);
   assert.match(source, /\(billing\?\.plans \|\| \[\]\)\.map/);
   assert.match(source, /subscription\.planId/);
+  assert.doesNotMatch(source, /TOSS_CLIENT_KEY|TOSS_SECRET_KEY|결제 설정 필요|테스트 키가 필요/);
 });
