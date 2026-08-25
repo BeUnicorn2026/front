@@ -1591,12 +1591,21 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
   const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";
+  const participantTransition = reducedMotion
+    ? "none"
+    : "width var(--duration-medium) var(--motion-navigation-ease), transform var(--duration-medium) var(--motion-navigation-ease)";
+  const participantSurfaceTransition = reducedMotion
+    ? "none"
+    : participantOpen
+      ? "height var(--duration-medium) var(--motion-navigation-ease), box-shadow var(--duration-fast) var(--ease-standard)"
+      : "height var(--duration-medium) var(--motion-navigation-ease), border-radius var(--duration-fast-min) var(--ease-standard) var(--duration-medium-min), box-shadow var(--duration-fast) var(--ease-standard)";
   const displayedElapsed = readOnly ? recording.activeMeeting?.duration || recording.elapsed : recording.elapsed;
   const userRole = user?.vocabulary?.roles?.[0] || "회의 참가자";
   const userAvatar = user?.avatarUrl || user?.profileImageUrl || user?.imageUrl;
   const selectedMicrophone = recording.audioInputs.find(({ deviceId }) => deviceId === recording.selectedAudioInputId);
   const microphoneLabel = selectedMicrophone?.label || "시스템 기본 마이크";
   const meetingControlHeight = "calc(var(--spacing-10) + var(--spacing-8))";
+  const participantRestHeight = "calc(var(--spacing-10) + var(--spacing-6))";
 
   const copyText = async (value, successMessage) => {
     try {
@@ -1620,14 +1629,14 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
       data-meeting-participant-control
       align="center"
       width={participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)"}
-      height="calc(var(--spacing-10) + var(--spacing-4))"
+      height={participantRestHeight}
       style={{
         position: "absolute",
         insetInlineStart: "50%",
         bottom: "var(--spacing-2)",
         zIndex: 4,
         transform: "translateX(-50%)",
-        transition
+        transition: participantTransition
       }}
     >
       <Card
@@ -1636,11 +1645,11 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
           position: "absolute",
           bottom: "var(--spacing-0)",
           width: "100%",
-          height: participantOpen ? "calc(var(--spacing-10) * 7)" : "calc(var(--spacing-10) + var(--spacing-4))",
-          overflow: "hidden",
+          height: participantOpen ? "calc(var(--spacing-10) * 7)" : participantRestHeight,
+          overflow: "visible",
           borderRadius: participantOpen ? "var(--radius-container)" : "var(--radius-full)",
           boxShadow: participantOpen ? "var(--shadow-high)" : "var(--shadow-med)",
-          transition
+          transition: participantSurfaceTransition
         }}
       >
         <Stack height="100%">
@@ -1798,8 +1807,8 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
                   <Stack
                     aria-hidden
                     width={participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)"}
-                    height="calc(var(--spacing-10) + var(--spacing-4))"
-                    style={{ transition }}
+                    height={participantRestHeight}
+                    style={{ transition: participantTransition }}
                   />
                 )}
               />

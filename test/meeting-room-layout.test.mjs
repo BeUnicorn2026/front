@@ -21,11 +21,14 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /id="meeting-participant-status"/);
   assert.match(room, /<Avatar src=\{userAvatar\} name=\{user\?\.name \|\| "나"\} size="lg" tooltip=\{false\} \/>/);
   assert.match(room, /<Heading level=\{3\} maxLines=\{1\}>\{user\?\.name \|\| "나"\}<\/Heading>/);
-  assert.match(room, /height: participantOpen \? "calc\(var\(--spacing-10\) \* 7\)" : "calc\(var\(--spacing-10\) \+ var\(--spacing-4\)\)"/);
+  assert.match(room, /const participantRestHeight = "calc\(var\(--spacing-10\) \+ var\(--spacing-6\)\)"/);
+  assert.match(room, /height: participantOpen \? "calc\(var\(--spacing-10\) \* 7\)" : participantRestHeight/);
   assert.match(room, /position: "absolute"/);
   assert.match(room, /insetInlineStart: "50%"/);
   assert.match(room, /bottom: "var\(--spacing-0\)"/);
-  assert.match(room, /overflow: "hidden"/);
+  assert.match(room, /overflow: "visible"/);
+  assert.match(room, /participantOpen\s+\? "height var\(--duration-medium\)[\s\S]*: "height var\(--duration-medium\)[\s\S]*border-radius var\(--duration-fast-min\) var\(--ease-standard\) var\(--duration-medium-min\)/);
+  assert.match(room, /transition: participantSurfaceTransition/);
   assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
   assert.doesNotMatch(room, /role="dialog"/);
   assert.match(room, /label=\{recording\.isRecording \? "기록 중지"/);
