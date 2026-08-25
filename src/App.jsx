@@ -1289,21 +1289,55 @@ function DashboardPage({ context, onStart, onOpen, recording, vocabularyTerms })
   );
 }
 
-function DocumentsPage({ meetings, onOpen }) {
+function DocumentsPage({ meetings, onOpen, onDelete }) {
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const remove = async () => {
+    if (!deleteTarget || deleteBusy) return;
+    setDeleteBusy(true);
+    setFeedback("");
+    try {
+      await onDelete(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      setFeedback(error.message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
   return (
-    <Layout
-      header={<PageHeader title="회의 문서" description="구조, 전사, 용어와 액션을 한 문서에서 검토합니다." />}
-      content={(
-        <LayoutContent padding={4}>
-          <List hasDividers density="spacious" header={<Heading level={2}>최근 문서</Heading>}>
-            {meetings.length ? meetings.map((meeting) => {
-              const status = meetingStatusPresentation(meeting.status);
-              return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.mode === "stt" ? "STT 테스트" : `${meeting.speakerCount}명`} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Token label={status.label} color={status.color} size="sm" />} onClick={() => onOpen(meeting)} />;
-            }) : <ListItem label="저장된 회의 문서가 없습니다" description="실시간 기록 또는 파일 전사를 완료하면 자동으로 생성됩니다." startContent={<Icon icon="search" color="secondary" />} />}
-          </List>
-        </LayoutContent>
-      )}
-    />
+    <>
+      <Layout
+        header={<PageHeader title="회의 문서" description="구조, 전사, 용어와 액션을 한 문서에서 검토합니다." />}
+        content={(
+          <LayoutContent padding={4}>
+            <Stack gap={3}>
+              <Feedback message={feedback} onDismiss={() => setFeedback("")} />
+              <List hasDividers density="spacious" header={<Heading level={2}>최근 문서</Heading>}>
+                {meetings.length ? meetings.map((meeting) => {
+                  const status = meetingStatusPresentation(meeting.status);
+                  const controls = (
+                    <Stack direction="horizontal" gap={2} align="center">
+                      <Token label={status.label} color={status.color} size="sm" />
+                      <Button label={`${meeting.title} 삭제`} variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setDeleteTarget(meeting); }} />
+                    </Stack>
+                  );
+                  return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.mode === "stt" ? "STT 테스트" : `${meeting.speakerCount}명`} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={controls} onClick={() => onOpen(meeting)} />;
+                }) : <ListItem label="저장된 회의 문서가 없습니다" description="실시간 기록 또는 파일 전사를 완료하면 자동으로 생성됩니다." startContent={<Icon icon="search" color="secondary" />} />}
+              </List>
+            </Stack>
+          </LayoutContent>
+        )}
+      />
+      <Dialog isOpen={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleteTarget(null); }} purpose="required" width={480}>
+        <Layout
+          header={<DialogHeader title="회의 문서를 삭제할까요?" subtitle={deleteTarget?.title || "선택한 회의"} />}
+          content={<LayoutContent padding={4}><Text>전사, 구조 분석, 액션과 이 회의에서 추출된 조직 용어가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</Text></LayoutContent>}
+          footer={<LayoutFooter hasDivider><Section padding={3}><Stack direction="horizontal" justify="end" gap={2}><Button label="취소" variant="secondary" onClick={() => setDeleteTarget(null)} isDisabled={deleteBusy} /><Button label="문서 삭제" variant="destructive" onClick={remove} isLoading={deleteBusy} /></Stack></Section></LayoutFooter>}
+        />
+      </Dialog>
+    </>
   );
 }
 
@@ -1805,7 +1839,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   const startNewMeeting = () => { recording.resetMeeting(); setPage("record"); };
   const openMeeting = (meeting) => { recording.openMeeting(meeting); setPage("record"); };
   if (page === "home") content = <DashboardPage context={context} recording={recording} onStart={startNewMeeting} onOpen={openMeeting} vocabularyTerms={vocabularyTerms} />;
-  else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} />;
+  else if (page === "documents") content = <DocumentsPage meetings={recording.meetings} onOpen={openMeeting} onDelete={async (meetingId) => { await recording.removeMeeting(meetingId); await refreshVocabulary(); }} />;
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
   else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;

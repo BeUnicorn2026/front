@@ -142,6 +142,10 @@ export function recordingCompletionStatus(interrupted) {
   return interrupted ? "interrupted" : "completed";
 }
 
+export function meetingsAfterRemoval(meetings, meetingId) {
+  return meetings.filter(({ id }) => id !== meetingId);
+}
+
 export function recordingStartErrorMessage(error) {
   const messages = {
     NotAllowedError: "마이크 권한이 거부되었습니다. 브라우저 주소창의 권한 설정에서 마이크를 허용해 주세요.",
@@ -764,6 +768,15 @@ export function useRecording() {
     setNotice("");
   }, []);
 
+  const removeMeeting = useCallback(async (id) => {
+    if (recordingRef.current && activeMeetingRef.current?.id === id) {
+      throw new Error("녹음 중인 회의는 중지와 저장을 마친 뒤 삭제해 주세요.");
+    }
+    await apiRequest(`/api/meetings/${id}`, { method: "DELETE" });
+    setMeetings((current) => meetingsAfterRemoval(current, id));
+    if (activeMeetingRef.current?.id === id) resetMeeting();
+  }, [resetMeeting]);
+
   const enrollSpeaker = useCallback(async (name, file) => {
     const form = new FormData();
     form.append("name", name);
@@ -798,7 +811,7 @@ export function useRecording() {
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
     audioInputs, selectedAudioInputId, setSelectedAudioInputId,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, correctSpeaker, correctTranscript,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }

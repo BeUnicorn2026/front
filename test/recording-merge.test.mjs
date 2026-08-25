@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
   correctSpeakerCluster, correctTranscriptSegment, mergeSegments,
-  microphoneConstraints, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
+  meetingsAfterRemoval, microphoneConstraints, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -118,4 +118,10 @@ test("uses the selected microphone without dropping voice processing constraints
     deviceId: { exact: "studio-mic" }
   });
   assert.equal("deviceId" in microphoneConstraints(), false);
+});
+
+test("removes only the confirmed meeting from local document state", () => {
+  const meetings = [{ id: "one", title: "첫 회의" }, { id: "two", title: "둘째 회의" }];
+  assert.deepEqual(meetingsAfterRemoval(meetings, "one"), [{ id: "two", title: "둘째 회의" }]);
+  assert.equal(meetings.length, 2);
 });
