@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Badge } from "@astryxdesign/core/Badge";
@@ -20,7 +20,6 @@ import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { Section } from "@astryxdesign/core/Section";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Selector } from "@astryxdesign/core/Selector";
-import { SideNav, SideNavHeading, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
 import { Stack } from "@astryxdesign/core/Stack";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
@@ -706,7 +705,7 @@ function StructureDiagram({ blocks, selectedId, onSelect, isRecording }) {
       <Card padding={4} style={{ background: "var(--brand-ink)", color: "var(--brand-cream)" }}>
         <Stack direction="horizontal" gap={3} align="center" justify="between">
           <Stack direction="horizontal" gap={3} align="center">
-            <Icon icon="tree" color="inherit" />
+            <Icon icon="viewColumns" color="inherit" />
             <Stack gap={0.5}>
               <Heading level={2} color="inherit">회의 구조</Heading>
               <Text type="supporting" color="inherit">주제 {blocks.length}개 · 실제 발화 {blocks.reduce((sum, block) => sum + block.segments.length, 0)}개</Text>
@@ -1622,8 +1621,12 @@ function SettingsPage({ context, recording }) {
 }
 
 function Workspace({ context, onContextChange, onLogout }) {
+  const { compact, reducedMotion } = useViewport();
   const [page, setPage] = useState("home");
   const [vocabularyTerms, setVocabularyTerms] = useState([]);
+  const [navigationExpanded, setNavigationExpanded] = useState(false);
+  const navigationInteractionRef = useRef({ hovered: false, focused: false, pointerPress: false });
+  const navigationCollapseTimerRef = useRef(null);
   const recording = useRecording();
   const navItems = [
     ["home", "모든 회의", "calendar"],
@@ -1647,56 +1650,126 @@ function Workspace({ context, onContextChange, onLogout }) {
     return () => { cancelled = true; };
   }, [context.organization.id, (context.user.vocabulary?.knownTerms || []).join("\u0000")]);
 
-  const rail = (
-    <Stack
-      as="nav"
-      aria-label="주요 화면"
-      width="var(--layout-rail-width)"
-      height="100%"
-      align="center"
-      justify="between"
-      paddingBlock={5}
-      style={{ background: "var(--brand-ink)", flex: "none" }}
-    >
-      <Stack gap={3} align="center">
-        <Stack width={40} height={40} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
-          <Icon icon="microphone" color="inherit" label="Voice Partition" />
-        </Stack>
-        {navItems.slice(0, 4).map(([value, label, icon]) => (
-          <IconButton key={value} label={label} icon={<Icon icon={icon} color="inherit" />} variant="ghost" size="lg" onClick={() => setPage(value)} style={{ color: page === "record" && value === "record" ? "var(--brand-ink)" : "var(--color-rail-icon)", background: page === value ? value === "record" ? "var(--brand-coral)" : "var(--color-rail-selected)" : "transparent" }} />
-        ))}
+  useEffect(() => () => window.clearTimeout(navigationCollapseTimerRef.current), []);
+
+  const openNavigation = () => {
+    window.clearTimeout(navigationCollapseTimerRef.current);
+    setNavigationExpanded(true);
+  };
+  const scheduleNavigationCollapse = () => {
+    window.clearTimeout(navigationCollapseTimerRef.current);
+    navigationCollapseTimerRef.current = window.setTimeout(() => {
+      const interaction = navigationInteractionRef.current;
+      if (!interaction.hovered && !interaction.focused) setNavigationExpanded(false);
+    }, 420);
+  };
+  const navigationIsOpen = compact || navigationExpanded;
+  const navigationLabelStyle = {
+    opacity: navigationIsOpen ? 1 : 0,
+    transition: reducedMotion ? "none" : "opacity var(--duration-fast) var(--motion-navigation-ease)"
+  };
+  const navigationButtonContent = (label, icon) => (
+    <Stack direction="horizontal" gap={3} align="center" width="100%">
+      <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}>
+        <Icon icon={icon} color="inherit" />
       </Stack>
-      <Stack gap={3} align="center">
-        <IconButton label="멤버 및 설정" icon={<Icon icon="wrench" color="inherit" />} variant="ghost" size="lg" onClick={() => setPage("settings")} style={{ color: "var(--color-rail-icon)", background: page === "settings" ? "var(--color-rail-selected)" : "transparent" }} />
-        <Avatar name={context.user.name} size="sm" />
-      </Stack>
+      <Text color="inherit" weight="medium" maxLines={1} style={navigationLabelStyle}>{label}</Text>
     </Stack>
   );
 
-  const detailNav = (
-    <SideNav
-      header={<SideNavHeading heading={context.organization.name} superheading="Voice Partition" icon={<Avatar name={context.organization.name} size="sm" />} />}
-      topContent={<Button label="새 회의 녹음" variant="primary" size="lg" width="100%" icon={<Icon icon="microphone" />} onClick={() => { recording.resetMeeting(); setPage("record"); }} />}
-      footer={(
-        <Section variant="muted" padding={3}>
-          <Stack direction="horizontal" gap={2} align="center">
-            <Avatar name={context.user.name} size="sm" />
-            <Stack gap={0.5}>
-              <Text type="label">{context.user.name}</Text>
-              <Text type="supporting" maxLines={1}>{context.user.email}</Text>
+  const navigation = (
+    <Stack
+      as="nav"
+      aria-label="주요 화면"
+      width={navigationIsOpen ? "var(--layout-navigation-expanded-width)" : "var(--layout-rail-width)"}
+      height="100%"
+      justify="between"
+      padding={4}
+      onPointerEnter={() => {
+        navigationInteractionRef.current.hovered = true;
+        openNavigation();
+      }}
+      onPointerLeave={() => {
+        navigationInteractionRef.current.hovered = false;
+        scheduleNavigationCollapse();
+      }}
+      onPointerDownCapture={() => {
+        navigationInteractionRef.current.pointerPress = true;
+        navigationInteractionRef.current.focused = false;
+      }}
+      onPointerUpCapture={() => {
+        navigationInteractionRef.current.pointerPress = false;
+      }}
+      onPointerCancel={() => {
+        navigationInteractionRef.current.pointerPress = false;
+      }}
+      onFocusCapture={() => {
+        if (!navigationInteractionRef.current.pointerPress) navigationInteractionRef.current.focused = true;
+        openNavigation();
+      }}
+      onBlurCapture={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        navigationInteractionRef.current.focused = false;
+        scheduleNavigationCollapse();
+      }}
+      style={{
+        background: "var(--brand-ink)",
+        color: "var(--color-rail-icon)",
+        flex: "none",
+        overflow: "hidden",
+        boxShadow: "var(--shadow-med)",
+        transition: reducedMotion ? "none" : "width var(--duration-medium) var(--motion-navigation-ease)"
+      }}
+    >
+      <Stack gap={5} width="100%">
+        <Button label={`${context.organization.name} 홈`} variant="ghost" width="100%" onClick={() => setPage("home")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+          <Stack direction="horizontal" gap={3} align="center" width="100%">
+            <Stack width={40} height={40} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)", flex: "none" }}>
+              <Icon icon="microphone" color="inherit" label="Voice Partition" />
+            </Stack>
+            <Stack gap={0.5} style={navigationLabelStyle}>
+              <Text color="inherit" weight="semibold" maxLines={1}>{context.organization.name}</Text>
+              <Text color="inherit" type="supporting" maxLines={1}>Voice Partition</Text>
             </Stack>
           </Stack>
-        </Section>
-      )}
-      footerIcons={<Button label="로그아웃" variant="ghost" size="sm" onClick={onLogout} />}
-      style={{ width: "var(--layout-side-nav-width)", flex: "none" }}
-    >
-      <SideNavSection title="워크스페이스">
-        {navItems.map(([value, label, icon]) => <SideNavItem key={value} label={label} icon={icon} isSelected={page === value} onClick={() => setPage(value)} />)}
-      </SideNavSection>
-    </SideNav>
+        </Button>
+        <Stack gap={2} width="100%">
+        {navItems.map(([value, label, icon]) => (
+          <Button
+            key={value}
+            label={label}
+            variant="ghost"
+            size="lg"
+            width="100%"
+            onClick={() => setPage(value)}
+            style={{
+              color: page === "record" && value === "record" ? "var(--brand-ink)" : "inherit",
+              background: page === value ? value === "record" ? "var(--brand-coral)" : "var(--color-rail-selected)" : "transparent",
+              padding: 0,
+              justifyContent: "flex-start"
+            }}
+          >
+            {navigationButtonContent(label, icon)}
+          </Button>
+        ))}
+        </Stack>
+      </Stack>
+      <Stack gap={2} width="100%">
+        <Button label="내 설정" variant="ghost" width="100%" onClick={() => setPage("settings")} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+          <Stack direction="horizontal" gap={3} align="center" width="100%">
+            <Stack width={40} height={40} align="center" justify="center" style={{ flex: "none" }}><Avatar name={context.user.name} size="sm" /></Stack>
+            <Stack gap={0.5} style={navigationLabelStyle}>
+              <Text color="inherit" weight="semibold" maxLines={1}>{context.user.name}</Text>
+              <Text color="inherit" type="supporting" maxLines={1}>{context.user.email}</Text>
+            </Stack>
+          </Stack>
+        </Button>
+        <Button label="로그아웃" variant="ghost" size="sm" width="100%" onClick={onLogout} style={{ color: "inherit", padding: 0, justifyContent: "flex-start" }}>
+          {navigationButtonContent("로그아웃", "chevronLeft")}
+        </Button>
+      </Stack>
+    </Stack>
   );
-  const sideNav = page === "record" ? rail : <Stack direction="horizontal" height="100%">{rail}{detailNav}</Stack>;
 
   let content;
   const startNewMeeting = () => { recording.resetMeeting(); setPage("record"); };
@@ -1707,7 +1780,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
   else content = <MeetingPage context={context} recording={recording} vocabularyTerms={vocabularyTerms} onVocabularyRefresh={refreshVocabulary} />;
 
-  return <AppShell sideNav={sideNav} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
+  return <AppShell sideNav={navigation} variant="section" height="fill" contentPadding={0} mobileNav={{ breakpoint: "md" }}>{content}</AppShell>;
 }
 
 export default function App() {

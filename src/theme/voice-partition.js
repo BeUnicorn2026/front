@@ -192,6 +192,7 @@ export const voicePartitionTheme = {
     "--radius-chat": "42px",
     "--layout-rail-width": "72px",
     "--layout-side-nav-width": "248px",
+    "--layout-navigation-expanded-width": "320px",
     "--layout-document-panel-width": "420px",
     "--layout-auth-brand-width": "600px",
     "--layout-dashboard-panel-width": "340px",
@@ -202,6 +203,7 @@ export const voicePartitionTheme = {
     "--brand-ink": "#14231D",
     "--color-rail-icon": "#F9F4E4",
     "--color-rail-selected": "#FFFFFF24",
+    "--motion-navigation-ease": "cubic-bezier(0.2, 0.8, 0.2, 1)",
     "--focus-outline-color": "var(--color-accent)"
   },
   components: {
