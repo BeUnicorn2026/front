@@ -5,7 +5,7 @@ export const voicePartitionTheme = defineTheme({
   name: "voice-partition",
   extends: neutralTheme,
   color: {
-    accent: ["#16785A", "#56C79F"],
+    accent: ["#16785A", "#7FD3A8"],
     neutralStyle: "warm",
     contrast: "standard"
   },
@@ -26,51 +26,53 @@ export const voicePartitionTheme = defineTheme({
       fallbacks: '"SF Mono", ui-monospace, monospace'
     }
   },
-  radius: { base: 6, multiplier: 1.35 },
+  radius: { base: 4, multiplier: 1.5 },
   motion: { fast: 130, medium: 300, slow: 720, ratio: 0.78 },
   tokens: {
-    "--color-background-body": ["#FFFFFF", "#111A16"],
-    "--color-background-surface": ["#FEFFFD", "#18221D"],
-    "--color-background-card": ["#FFFFFF", "#1E2A24"],
-    "--color-background-popover": ["#FFFFFF", "#243129"],
-    "--color-background-muted": ["#F6F8F5", "#202B25"],
-    "--color-text-primary": ["#14231D", "#EFF7F2"],
-    "--color-text-secondary": ["#66736C", "#B4C3BB"],
-    "--color-text-disabled": ["#9AA39E", "#75847C"],
-    "--color-border": ["#E4E9E5", "#35443C"],
-    "--color-border-emphasized": ["#C3CCC6", "#5A6B62"],
-    "--color-on-accent": ["#FFFFFF", "#0D2119"],
+    "--radius-inner": "8px",
+    "--radius-element": "12px",
+    "--radius-container": "16px",
+    "--radius-page": "24px",
+    "--layout-rail-width": "72px",
+    "--layout-side-nav-width": "248px",
+    "--layout-document-panel-width": "420px",
+    "--layout-auth-brand-width": "600px",
+    "--layout-dashboard-panel-width": "340px",
+    "--brand-mint": "#9BD9B0",
+    "--brand-coral": "#F5928A",
+    "--brand-yellow": "#F7D06B",
+    "--brand-cream": "#F9F4E4",
+    "--brand-ink": "#14231D",
+    "--color-background-body": ["#FCF9F1", "#131A17"],
+    "--color-background-surface": ["#FFFFFF", "#1E2925"],
+    "--color-background-card": ["#FFFFFF", "#1A2320"],
+    "--color-background-popover": ["#FFFFFF", "#1E2925"],
+    "--color-background-muted": ["#F5F1E5", "#1A2320"],
+    "--color-text-primary": ["#1C2A24", "#EDF3EF"],
+    "--color-text-secondary": ["#63736A", "#A7B8AF"],
+    "--color-text-disabled": ["#9FADA5", "#64756C"],
+    "--color-text-accent": ["#12694E", "#9BDDBB"],
+    "--color-border": ["#ECE5D5", "#2C3833"],
+    "--color-border-emphasized": ["#D8D0BB", "#3E4C46"],
+    "--color-on-accent": ["#FFFFFF", "#0B1F16"],
     "--focus-outline-color": "var(--color-accent)",
-    "--color-background-red": ["#FFF5F3", "#442925"],
-    "--color-border-red": ["#F5928A", "#D97870"],
-    "--color-text-red": ["#792E29", "#FFC6C0"],
-    "--color-icon-red": ["#B64D45", "#F5928A"],
-    "--color-background-yellow": ["#FFFAE7", "#40371E"],
-    "--color-border-yellow": ["#F7D06B", "#D3AE53"],
-    "--color-text-yellow": ["#654D08", "#FFE594"],
-    "--color-icon-yellow": ["#9A7413", "#F7D06B"],
-    "--color-background-green": ["#EAF8EF", "#203A2A"],
-    "--color-border-green": ["#9BD9B0", "#69B886"],
-    "--color-text-green": ["#195F43", "#ADF1C4"],
-    "--color-icon-green": ["#2A7D57", "#9BD9B0"],
-    "--color-background-teal": ["#EEF9F6", "#1C3A32"],
-    "--color-border-teal": ["#78C2AD", "#55A891"],
-    "--color-text-teal": ["#0C654E", "#9BE4CF"],
-    "--color-icon-teal": ["#16785A", "#78C2AD"],
-    "--shadow-low": "0 2px 10px light-dark(#14231D0A, #00000040)",
-    "--shadow-med": "0 12px 32px light-dark(#14231D10, #00000052)"
-  },
-  components: {
-    button: {
-      base: {
-        borderRadius: "var(--radius-full)",
-        fontWeight: "var(--font-weight-semibold)"
-      }
-    },
-    card: {
-      base: {
-        borderRadius: "var(--radius-container)"
-      }
-    }
+    "--color-background-red": ["#FDEEEB", "#3A2320"],
+    "--color-border-red": ["#F3B3AA", "#6B3A33"],
+    "--color-text-red": ["#9E3A30", "#F6BDB5"],
+    "--color-icon-red": ["#C0483C", "#F2A79E"],
+    "--color-background-yellow": ["#FDF5E0", "#38301A"],
+    "--color-border-yellow": ["#EBD48A", "#5A4A1E"],
+    "--color-text-yellow": ["#6E5400", "#F3DA95"],
+    "--color-icon-yellow": ["#8A6A00", "#F0CE6E"],
+    "--color-background-green": ["#E7F6EC", "#1F3428"],
+    "--color-border-green": ["#A9DBBE", "#2F5A44"],
+    "--color-text-green": ["#16613F", "#A6E3C2"],
+    "--color-icon-green": ["#1C7A55", "#8ED9B2"],
+    "--color-background-teal": ["#E5F5F3", "#17332F"],
+    "--color-border-teal": ["#A3D8D2", "#2C5751"],
+    "--color-text-teal": ["#0B6158", "#A2E2DA"],
+    "--color-icon-teal": ["#0E7A6E", "#86D8CE"],
+    "--shadow-low": "0 1px 2px light-dark(#14231D0D, #0000004D), 0 4px 10px light-dark(#14231D0F, #00000066)",
+    "--shadow-med": "0 2px 6px light-dark(#14231D0F, #00000059), 0 10px 24px light-dark(#14231D14, #00000080)"
   }
 });

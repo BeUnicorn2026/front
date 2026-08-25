@@ -11,6 +11,7 @@ import { FileInput } from "@astryxdesign/core/FileInput";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutFooter, LayoutHeader, LayoutPanel } from "@astryxdesign/core/Layout";
 import { Link } from "@astryxdesign/core/Link";
 import { List, ListItem } from "@astryxdesign/core/List";
@@ -98,85 +99,8 @@ function BrandStory({ compact = false }) {
   );
 }
 
-function AmbientVoiceScene({ compact = false, reducedMotion = false }) {
-  const float = (values, duration, begin = "0s") => reducedMotion ? null : (
-    <animateTransform
-      attributeName="transform"
-      type="translate"
-      values={values}
-      additive="sum"
-      dur={duration}
-      begin={begin}
-      repeatCount="indefinite"
-      calcMode="spline"
-      keySplines="0.24 1 0.4 1; 0.24 1 0.4 1"
-    />
-  );
-
-  return (
-    <svg
-      viewBox="0 0 640 390"
-      width="100%"
-      height={compact ? 150 : 390}
-      preserveAspectRatio="xMidYMid meet"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <defs>
-        <filter id="ambient-glow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="34" />
-        </filter>
-        <filter id="ambient-object" x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="2.4" />
-        </filter>
-        <linearGradient id="ambient-sheet" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--color-background-card)" stopOpacity="0.92" />
-          <stop offset="1" stopColor="var(--color-background-surface)" stopOpacity="0.64" />
-        </linearGradient>
-      </defs>
-
-      <g opacity="0.5" filter="url(#ambient-glow)">
-        <circle cx="126" cy="94" r="82" fill="var(--color-background-yellow)" />
-        <circle cx="514" cy="82" r="105" fill="var(--color-background-teal)" />
-        <circle cx="456" cy="318" r="96" fill="var(--color-background-red)" />
-        <circle cx="176" cy="326" r="118" fill="var(--color-accent-muted)" />
-      </g>
-
-      <g filter="url(#ambient-object)" opacity="0.95" transform="translate(42 52)">
-        {float("0 0; 26 -18; 0 0", "12s")}
-        <rect width="224" height="118" rx="28" fill="url(#ambient-sheet)" />
-        <circle cx="42" cy="40" r="16" fill="var(--color-accent)" />
-        <path d="M82 43h96M82 67h62M30 91h154" stroke="var(--color-text-primary)" strokeWidth="9" strokeLinecap="round" opacity="0.34" />
-      </g>
-
-      <g filter="url(#ambient-object)" opacity="0.94" transform="translate(390 35)">
-        {float("0 0; -22 24; 0 0", "14s", "-4s")}
-        <circle cx="72" cy="72" r="67" fill="var(--color-background-yellow)" />
-        <circle cx="72" cy="72" r="31" fill="var(--color-background-teal)" />
-        <path d="M72 50v44M54 64v16M90 60v24" stroke="var(--color-accent)" strokeWidth="8" strokeLinecap="round" />
-      </g>
-
-      <g filter="url(#ambient-object)" opacity="0.95" transform="translate(304 212)">
-        {float("0 0; 18 19; 0 0", "11s", "-7s")}
-        <path d="M18 0h176l42 42v122H18z" fill="url(#ambient-sheet)" />
-        <path d="M194 0v42h42" fill="var(--color-background-yellow)" />
-        <path d="M54 68h118M54 96h146M54 124h92" stroke="var(--color-text-primary)" strokeWidth="10" strokeLinecap="round" opacity="0.28" />
-      </g>
-
-      <g filter="url(#ambient-object)" opacity="0.94" transform="translate(102 246)">
-        {float("0 0; -15 -22; 0 0", "13s", "-2s")}
-        <circle cx="34" cy="34" r="34" fill="var(--color-background-card)" />
-        <circle cx="34" cy="34" r="15" fill="var(--color-background-red)" />
-        <circle cx="112" cy="54" r="28" fill="var(--color-background-card)" />
-        <circle cx="112" cy="54" r="12" fill="var(--color-background-yellow)" />
-        <path d="M63 42l22 7" stroke="var(--color-background-card)" strokeWidth="9" strokeLinecap="round" />
-      </g>
-    </svg>
-  );
-}
-
 function AuthScreen({ onAuthenticated }) {
-  const { compact, desktop, reducedMotion } = useViewport();
+  const { compact, desktop } = useViewport();
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [verification, setVerification] = useState(null);
@@ -251,35 +175,41 @@ function AuthScreen({ onAuthenticated }) {
   return (
     <AppShell variant="surface" height="fill" contentPadding={0}>
       <Stack direction={desktop ? "horizontal" : "vertical"} height={desktop ? "100%" : undefined}>
-        <Card variant="green" width={desktop ? "54%" : "100%"} height={desktop ? "100%" : undefined} padding={0} elevation="none">
-          <Stack height={desktop ? "100%" : undefined} justify="between" padding={compact ? 5 : 10} gap={compact ? 4 : 8}>
+        <Stack width={desktop ? "var(--layout-auth-brand-width)" : "100%"} height={desktop ? "100%" : undefined} justify="between" padding={compact ? 5 : 10} gap={compact ? 5 : 8} style={{ background: "var(--brand-cream)", color: "var(--brand-ink)", flex: "none" }}>
             <Stack direction="horizontal" gap={2} align="center">
-              <Card variant="transparent" padding={1.5}>
-                <Icon icon="microphone" color="accent" label="Voice Partition" size="lg" />
-              </Card>
-              <Text type="label" weight="semibold">VOICE PARTITION</Text>
+              <Stack width={36} height={36} align="center" justify="center" style={{ background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
+                <Icon icon="microphone" color="inherit" label="Voice Partition" size="lg" />
+              </Stack>
+              <Text type="large" weight="semibold">VOICE PARTITION</Text>
             </Stack>
-            <Stack gap={3} maxWidth={590}>
-              <Text type="label" weight="semibold" color="accent">MEETING INTELLIGENCE</Text>
-              <Heading level={1} type={compact ? "display-3" : "display-1"} textWrap="balance">
-                말하는 순간, 회의의 맥락이 보입니다.
-              </Heading>
-              <Text type="large" color="secondary" as="p">
-                목소리를 알아보고, 대화를 구조화하고, 나에게 낯선 말만 바로 설명합니다.
-              </Text>
+            <Stack gap={6} maxWidth={480}>
+              <Heading level={1} type={compact ? "display-3" : "display-2"} textWrap="balance">회의가 끝나면 문서도 끝나 있어요</Heading>
+              <Stack gap={4}>
+                {[
+                  ["var(--brand-mint)", "말하는 동안 구조가 잡힙니다", "주제 · 결정 · 액션 아이템이 트리로 정리돼요"],
+                  ["var(--brand-coral)", "모르는 말은 그 자리에서 풀어서", "직무에 맞춰 설명 수준을 바꿉니다"],
+                  ["var(--brand-yellow)", "조직 용어집이 같이 자랍니다", "한 번 확인한 지식은 다음 회의에도 적용돼요"]
+                ].map(([background, title, description]) => (
+                  <Stack key={title} direction="horizontal" gap={3} align="start">
+                    <Stack width={28} height={28} style={{ background, borderRadius: "var(--radius-inner)", flex: "none" }} />
+                    <Stack gap={0.5}>
+                      <Text weight="semibold">{title}</Text>
+                      <Text type="supporting" color="secondary">{description}</Text>
+                    </Stack>
+                  </Stack>
+                ))}
+              </Stack>
             </Stack>
-            <AmbientVoiceScene compact={compact} reducedMotion={reducedMotion} />
-          </Stack>
-        </Card>
-        <Section width={desktop ? "46%" : "100%"} padding={compact ? 5 : 10}>
+            <Text type="supporting" color="secondary">회의 녹음은 조직이 설정한 보관 정책에 따라 관리됩니다.</Text>
+        </Stack>
+        <Section width="100%" padding={compact ? 5 : 10}>
           <Stack height="100%" justify="between" align="center" gap={8}>
-            <Stack direction="horizontal" width="100%" maxWidth={440} justify="end">
+            <Stack direction="horizontal" width="100%" maxWidth={400} justify="end">
               <Text type="supporting" color="secondary">보안이 적용된 조직 워크스페이스</Text>
             </Stack>
-            <Stack as="form" onSubmit={submit} gap={6} width="100%" maxWidth={440}>
+            <Stack as="form" onSubmit={submit} gap={6} width="100%" maxWidth={400}>
               <Stack gap={1.5}>
-                <Text type="label" color="accent" weight="semibold">{verification ? "VERIFY YOUR EMAIL" : mode === "login" ? "WELCOME BACK" : "JOIN YOUR TEAM"}</Text>
-                <Heading level={2} type="display-3">{verification ? "이메일을 확인해 주세요" : mode === "login" ? "다시 만나 반가워요" : "일의 맥락을 연결하세요"}</Heading>
+                <Heading level={2}>{verification ? "이메일을 확인해 주세요" : mode === "login" ? "다시 만나서 반가워요" : "계정을 만들어 시작하세요"}</Heading>
                 <Text color="secondary" as="p">
                   {verification
                     ? `${verification.email}로 보낸 6자리 코드를 입력하세요. 코드는 10분 동안 유효합니다.`
@@ -1230,7 +1160,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
           </Stack>
         </LayoutContent>
         )}
-        end={desktop ? <LayoutPanel width={400} hasDivider padding={4} label="개인화 용어 및 액션" role="complementary">{insight}</LayoutPanel> : undefined}
+        end={desktop ? <LayoutPanel width="var(--layout-document-panel-width)" hasDivider padding={4} label="개인화 용어 및 액션" role="complementary">{insight}</LayoutPanel> : undefined}
         footer={<RecordingFooter recording={recording} compact={compact} />}
       />
       <Dialog isOpen={isInsightOpen} onOpenChange={setInsightOpen} variant={compact ? "fullscreen" : "standard"} width={520} maxHeight="90vh">
@@ -1249,34 +1179,52 @@ function meetingDate(value) {
 }
 
 function DashboardPage({ context, onStart, onOpen, recording, vocabularyTerms }) {
+  const { compact, desktop } = useViewport();
   const recentMeetings = recording.meetings.slice(0, 5);
-  const unfamiliarTermCount = vocabularyTerms.filter(({ isKnown }) => !isKnown).length;
-  const actionCount = deriveActions(allSegments).length;
+  const unfamiliarTerms = vocabularyTerms.filter(({ isKnown }) => !isKnown);
+  const newTerms = unfamiliarTerms.filter(({ knowledge }) => !knowledge?.evidenceCount).slice(0, 3);
   return (
     <Layout
-      header={<PageHeader title={`안녕하세요, ${context.user.name}님`} description={`${context.organization.name}의 회의를 구조화할 준비가 됐습니다.`} endContent={<Button variant="primary" label="새 회의 시작" icon={<Icon icon="microphone" />} onClick={onStart} />} />}
+      header={<PageHeader title="회의" description={`${context.organization.name} · 저장된 회의 ${recording.meetings.length}건`} endContent={<Button variant="primary" label="새 회의 녹음" icon={<Icon icon="microphone" />} onClick={onStart} />} />}
       content={(
-        <LayoutContent padding={4}>
-          <Stack gap={6}>
-            <Stack direction="horizontal" gap={3} wrap="wrap">
-              <Card width={240} padding={4}>
-                <Stack gap={1}><Text type="supporting">등록 화자</Text><Heading level={2} type="display-3">{recording.speakers.length}</Heading><Text type="supporting">이 조직에서 식별 가능</Text></Stack>
-              </Card>
-              <Card width={240} padding={4} variant="red">
-                <Stack gap={1}><Text type="supporting">나에게 낯선 용어</Text><Heading level={2} type="display-3">{unfamiliarTermCount}</Heading><Text type="supporting">저장된 실제 회의 기준</Text></Stack>
-              </Card>
-              <Card width={240} padding={4} variant="teal">
-                <Stack gap={1}><Text type="supporting">감지된 액션</Text><Heading level={2} type="display-3">{actionCount}</Heading><Text type="supporting">저장된 실제 발화에서 추출</Text></Stack>
-              </Card>
-            </Stack>
-            <Section dividers={["top"]} paddingInline={0}>
-              <List hasDividers header={<Heading level={2}>최근 회의 문서</Heading>}>
+        <LayoutContent padding={compact ? 3 : 6}>
+          <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
+            <Stack gap={4} width="100%">
+              <Stack gap={1}>
+                <Heading level={2}>최근 회의</Heading>
+                <Text type="supporting">실제 녹음과 파일 전사로 저장된 문서입니다.</Text>
+              </Stack>
+              <Card padding={0}>
+              <List hasDividers>
                 {recentMeetings.length ? recentMeetings.map((meeting) => {
                   const status = meetingStatusPresentation(meeting.status);
                   return <ListItem key={meeting.id} label={meeting.title} description={`${meetingDate(meeting.startedAt)} · ${meeting.segmentCount}개 발화`} startContent={<Icon icon="calendar" color="accent" />} endContent={<Stack direction="horizontal" gap={1}><Token label={meeting.mode === "stt" ? "STT" : `${meeting.speakerCount}명`} color={meeting.mode === "stt" ? "teal" : "default"} size="sm" /><Token label={status.label} color={status.color} size="sm" /></Stack>} onClick={() => onOpen(meeting)} />;
                 }) : <ListItem label="아직 저장된 회의가 없습니다" description="새 회의를 시작하면 실제 전사 문서가 여기에 저장됩니다." startContent={<Icon icon="microphone" color="secondary" />} />}
               </List>
-            </Section>
+              </Card>
+            </Stack>
+            <Stack gap={4} width={desktop ? "var(--layout-dashboard-panel-width)" : "100%"} style={{ flex: "none" }}>
+              <Card padding={4}>
+                <Stack gap={3}>
+                  <Stack direction="horizontal" justify="between" align="center"><Heading level={3}>이번 주 새 용어</Heading><Text type="supporting">{newTerms.length}개</Text></Stack>
+                  <List hasDividers density="compact">
+                    {newTerms.length ? newTerms.map((term) => <ListItem key={term.conceptId || term.term} label={term.term} description={term.definition || `${term.occurrences || 1}회 언급`} startContent={<Token label="새 용어" color="yellow" size="sm" />} />) : <ListItem label="새 용어가 없습니다" description="회의를 분석하면 여기에 표시됩니다." />}
+                  </List>
+                </Stack>
+              </Card>
+              <Card padding={4}>
+                <Stack gap={3}>
+                  <Heading level={3}>내가 모른다고 표시한 단어</Heading>
+                  <Stack direction="horizontal" gap={2} wrap="wrap">
+                    {unfamiliarTerms.length ? unfamiliarTerms.slice(0, 8).map((term) => <Token key={term.conceptId || term.term} label={term.term} color="red" />) : <Text type="supporting">아직 직접 표시한 용어가 없습니다.</Text>}
+                  </Stack>
+                  <Text type="supporting">다음 회의에서 같은 용어가 나오면 먼저 풀어드립니다.</Text>
+                </Stack>
+              </Card>
+              <Card padding={4} variant="muted">
+                <Stack gap={2}><Text weight="semibold">음성 식별 준비</Text><Text type="supporting">등록 화자 {recording.speakers.length}명 · 별도 검증 {recording.speakers.filter(({ crossSessionVerificationCount }) => crossSessionVerificationCount).length}명</Text></Stack>
+              </Card>
+            </Stack>
           </Stack>
         </LayoutContent>
       )}
@@ -1608,15 +1556,15 @@ function SettingsPage({ context, recording }) {
 }
 
 function Workspace({ context, onContextChange, onLogout }) {
-  const [page, setPage] = useState("record");
+  const [page, setPage] = useState("home");
   const [vocabularyTerms, setVocabularyTerms] = useState([]);
   const recording = useRecording();
   const navItems = [
-    ["home", "홈", "calendar"],
+    ["home", "모든 회의", "calendar"],
     ["record", "실시간 기록", "microphone"],
-    ["documents", "회의 문서", "search"],
-    ["dictionary", "개인 용어 사전", "info"],
-    ["settings", "조직 및 음성 설정", "wrench"]
+    ["documents", "정리된 문서", "search"],
+    ["dictionary", "용어집", "info"],
+    ["settings", "멤버 및 설정", "wrench"]
   ];
 
   const refreshVocabulary = async () => {
@@ -1633,10 +1581,36 @@ function Workspace({ context, onContextChange, onLogout }) {
     return () => { cancelled = true; };
   }, [context.organization.id, (context.user.vocabulary?.knownTerms || []).join("\u0000")]);
 
-  const sideNav = (
+  const rail = (
+    <Stack
+      as="nav"
+      aria-label="주요 화면"
+      width="var(--layout-rail-width)"
+      height="100%"
+      align="center"
+      justify="between"
+      paddingBlock={5}
+      style={{ background: "var(--brand-ink)", flex: "none" }}
+    >
+      <Stack gap={3} align="center">
+        <Stack width={40} height={40} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
+          <Icon icon="microphone" color="inherit" label="Voice Partition" />
+        </Stack>
+        {navItems.slice(0, 4).map(([value, label, icon]) => (
+          <IconButton key={value} label={label} icon={<Icon icon={icon} />} variant={page === value ? "secondary" : "ghost"} size="lg" onClick={() => setPage(value)} />
+        ))}
+      </Stack>
+      <Stack gap={3} align="center">
+        <IconButton label="멤버 및 설정" icon={<Icon icon="wrench" />} variant={page === "settings" ? "secondary" : "ghost"} size="lg" onClick={() => setPage("settings")} />
+        <Avatar name={context.user.name} size="sm" />
+      </Stack>
+    </Stack>
+  );
+
+  const detailNav = (
     <SideNav
-      header={<SideNavHeading heading="Voice Partition" superheading={context.organization.name} icon={<Icon icon="microphone" color="accent" />} />}
-      topContent={<Button label="새 실시간 기록" variant="primary" width="100%" icon={<Icon icon="microphone" />} onClick={() => { recording.resetMeeting(); setPage("record"); }} />}
+      header={<SideNavHeading heading={context.organization.name} superheading="Voice Partition" icon={<Avatar name={context.organization.name} size="sm" />} />}
+      topContent={<Button label="새 회의 녹음" variant="primary" size="lg" width="100%" icon={<Icon icon="microphone" />} onClick={() => { recording.resetMeeting(); setPage("record"); }} />}
       footer={(
         <Section variant="muted" padding={3}>
           <Stack direction="horizontal" gap={2} align="center">
@@ -1649,13 +1623,14 @@ function Workspace({ context, onContextChange, onLogout }) {
         </Section>
       )}
       footerIcons={<Button label="로그아웃" variant="ghost" size="sm" onClick={onLogout} />}
-      collapsible={{ defaultIsCollapsed: false, buttonLabel: "사이드바 접기" }}
+      style={{ width: "var(--layout-side-nav-width)", flex: "none" }}
     >
       <SideNavSection title="워크스페이스">
         {navItems.map(([value, label, icon]) => <SideNavItem key={value} label={label} icon={icon} isSelected={page === value} onClick={() => setPage(value)} />)}
       </SideNavSection>
     </SideNav>
   );
+  const sideNav = page === "record" ? rail : <Stack direction="horizontal" height="100%">{rail}{detailNav}</Stack>;
 
   let content;
   const startNewMeeting = () => { recording.resetMeeting(); setPage("record"); };
