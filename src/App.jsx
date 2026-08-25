@@ -1701,10 +1701,12 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const [intelligence, setIntelligence] = useState(null);
+  const [intelligenceBusy, setIntelligenceBusy] = useState(false);
   const [sentenceRewrites, setSentenceRewrites] = useState({});
   const [rewriteBusyTerm, setRewriteBusyTerm] = useState("");
   const automaticRecordingAttemptRef = useRef(false);
   const intelligenceRequestRef = useRef(new Set());
+  const intelligenceInFlightRef = useRef(new Set());
   const displayedSegments = recording.segments;
   const meetingId = recording.activeMeeting?.id;
   const finalizedSegmentCount = displayedSegments.filter(({ pending }) => !pending).length;
@@ -1750,19 +1752,26 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
           setIntelligence(cached);
           return;
         }
-        const canGenerate = !readOnly && !recording.isRecording && !recording.isBusy;
-        if (!canGenerate || intelligenceRequestRef.current.has(meetingId)) return;
+        const canGenerate = !readOnly && !recording.isBusy;
+        if (!canGenerate || intelligenceRequestRef.current.has(meetingId) || intelligenceInFlightRef.current.has(meetingId)) return;
         intelligenceRequestRef.current.add(meetingId);
-        const persistedMeeting = room?.id && recording.refreshActiveMeeting
-          ? await recording.refreshActiveMeeting()
-          : recording.activeMeeting;
-        if (cancelled || meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
-        if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
-        const result = await postJson(`/api/meetings/${meetingId}/intelligence`, { force: false });
-        if (cancelled || meetingIdRef.current !== meetingId) return;
-        setIntelligence(result.intelligence || null);
-        if (result.meeting) recording.updateMeeting(result.meeting);
-        if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+        intelligenceInFlightRef.current.add(meetingId);
+        setIntelligenceBusy(true);
+        try {
+          const persistedMeeting = room?.id && recording.refreshActiveMeeting
+            ? await recording.refreshActiveMeeting()
+            : recording.activeMeeting;
+          if (cancelled || meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
+          if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
+          const result = await postJson(`/api/meetings/${meetingId}/intelligence`, { force: false });
+          if (cancelled || meetingIdRef.current !== meetingId) return;
+          setIntelligence(result.intelligence || null);
+          if (result.meeting) recording.updateMeeting(result.meeting);
+          if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+        } finally {
+          intelligenceInFlightRef.current.delete(meetingId);
+          if (meetingIdRef.current === meetingId) setIntelligenceBusy(false);
+        }
       } catch {
         // Keep the live transcript usable when cached or generated intelligence is unavailable.
       }
@@ -1818,6 +1827,31 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
       delete next[segmentIndex];
       return next;
     });
+  };
+
+  const analyzeMeeting = async () => {
+    if (readOnly || recording.isBusy || intelligenceInFlightRef.current.has(meetingId) || !meetingId || !hasFinalizedTranscript) return;
+    intelligenceInFlightRef.current.add(meetingId);
+    setIntelligenceBusy(true);
+    try {
+      const persistedMeeting = room?.id && recording.refreshActiveMeeting
+        ? await recording.refreshActiveMeeting()
+        : recording.activeMeeting;
+      if (meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
+      if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
+      const result = await postJson(`/api/meetings/${meetingId}/intelligence`, {
+        force: Boolean(intelligence)
+      });
+      if (meetingIdRef.current !== meetingId) return;
+      setIntelligence(result.intelligence || null);
+      if (result.meeting) recording.updateMeeting(result.meeting);
+      if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+    } catch {
+      // Keep the live transcript usable when manual intelligence generation is unavailable.
+    } finally {
+      intelligenceInFlightRef.current.delete(meetingId);
+      if (meetingIdRef.current === meetingId) setIntelligenceBusy(false);
+    }
   };
 
   const copyText = async (value, successMessage) => {
@@ -1979,6 +2013,16 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
               )}
               endContent={!desktop && !readOnly ? (
                 <Stack direction="horizontal" gap={2}>
+                  {hasFinalizedTranscript && (
+                    <IconButton
+                      label={intelligence ? "다시 분석" : "AI로 정리"}
+                      icon={<Icon icon="wrench" />}
+                      variant="secondary"
+                      onClick={analyzeMeeting}
+                      isDisabled={recording.isBusy || intelligenceBusy}
+                      isLoading={intelligenceBusy}
+                    />
+                  )}
                   {isRoomCreator && !recording.roomClosed && (
                     <IconButton label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
                   )}
@@ -2037,6 +2081,16 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                 startContent={(
                   <Stack direction="horizontal" gap={2}>
                     <Button label={readOnly ? "기록 닫기" : "회의 나가기"} icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} style={{ color: "var(--color-text-red)" }} />
+                    {!readOnly && hasFinalizedTranscript && (
+                      <Button
+                        label={intelligence ? "다시 분석" : "AI로 정리"}
+                        icon={<Icon icon="wrench" />}
+                        variant="secondary"
+                        onClick={analyzeMeeting}
+                        isDisabled={recording.isBusy || intelligenceBusy}
+                        isLoading={intelligenceBusy}
+                      />
+                    )}
                     {!readOnly && isRoomCreator && !recording.roomClosed && (
                       <Button label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
                     )}
