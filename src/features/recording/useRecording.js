@@ -389,6 +389,13 @@ export function useRecording() {
     return apiRequest("/api/transcribe", { method: "POST", body: form });
   }, []);
 
+  const importAudio = useCallback(async (file) => {
+    const form = new FormData();
+    form.append("audio", file, file.name);
+    form.append("language", languageRef.current);
+    return apiRequest("/api/meetings/import", { method: "POST", body: form });
+  }, []);
+
   const finishRecording = useCallback(() => {
     recordingRef.current = false;
     setIsRecording(false);
@@ -541,20 +548,16 @@ export function useRecording() {
     setStatus("파일의 등록 화자를 확인하는 중");
     setNotice("");
     try {
-      const result = await submitAudio(file, file.name);
-      if (!result.segments?.length) throw new Error("인식된 대화가 없습니다.");
-      committedRef.current = result.segments;
-      setSegments(result.segments);
+      const result = await importAudio(file);
+      const meeting = result.meeting;
+      if (!meeting?.segments?.length) throw new Error("저장된 대화가 없습니다.");
+      activeMeetingRef.current = meeting;
+      setActiveMeeting(meeting);
+      upsertMeeting(meeting);
+      committedRef.current = meeting.segments;
+      setSegments(meeting.segments);
       setHasResult(true);
-      const created = await postJson("/api/meetings", { language: languageRef.current, source: "upload", title: file.name.replace(/\.[^.]+$/, "") });
-      activeMeetingRef.current = created.meeting;
-      setActiveMeeting(created.meeting);
-      await saveActiveMeeting({
-        status: "completed",
-        segments: result.segments,
-        duration: Number(result.duration) || Math.max(...result.segments.map(({ end }) => Number(end) || 0), 0)
-      });
-      elapsedRef.current = Number(result.duration) || Math.max(...result.segments.map(({ end }) => Number(end) || 0), 0);
+      elapsedRef.current = Number(meeting.duration) || 0;
       setElapsed(elapsedRef.current);
       setStatus("파일 기록 완료");
     } catch (error) {
@@ -563,7 +566,7 @@ export function useRecording() {
     } finally {
       setIsBusy(false);
     }
-  }, [saveActiveMeeting, submitAudio]);
+  }, [importAudio, upsertMeeting]);
 
   const openMeeting = useCallback((meeting) => {
     if (!meeting) return;
