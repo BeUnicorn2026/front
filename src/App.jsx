@@ -5,6 +5,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { Center } from "@astryxdesign/core/Center";
 import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { FileInput } from "@astryxdesign/core/FileInput";
@@ -29,7 +30,7 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Token } from "@astryxdesign/core/Token";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
-import { apiRequest, postJson, putJson } from "./api";
+import { apiEndpoint, apiRequest, postJson, putJson } from "./api";
 import {
   ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
@@ -66,6 +67,32 @@ function useViewport() {
 function Feedback({ message, status = "error", onDismiss }) {
   if (!message) return null;
   return <Banner status={status} title={message} isDismissable={Boolean(onDismiss)} onDismiss={onDismiss} />;
+}
+
+function ServiceConnectionScreen({ error, onRetry, isRetrying }) {
+  const configurationProblem = error?.code === "INVALID_API_RESPONSE";
+  return (
+    <AppShell variant="surface" height="fill" contentPadding={0}>
+      <Center width="100%" height="100%" padding={6}>
+        <Stack maxWidth={560} gap={6} align="center">
+          <Stack gap={2} align="center">
+            <StatusDot variant="error" label="API 연결 실패" />
+            <Heading level={1} textWrap="balance">서비스에 연결할 수 없습니다</Heading>
+            <Text color="secondary" justify="center" as="p">
+              {configurationProblem
+                ? "프론트엔드가 API 대신 정적 페이지를 받았습니다. Cloudflare의 VITE_API_ORIGIN과 백엔드 배포 상태를 확인해 주세요."
+                : "잠시 후 다시 시도해 주세요. 문제가 계속되면 API 서버와 네트워크 상태를 확인해야 합니다."}
+            </Text>
+          </Stack>
+          <Stack gap={1} align="center">
+            <Text type="supporting">연결 대상</Text>
+            <Text type="code">{apiEndpoint()}</Text>
+          </Stack>
+          <Button variant="primary" size="lg" label="다시 연결" onClick={onRetry} isLoading={isRetrying} />
+        </Stack>
+      </Center>
+    </AppShell>
+  );
 }
 
 function BrandStory({ compact = false }) {
@@ -1789,13 +1816,22 @@ function Workspace({ context, onContextChange, onLogout }) {
 export default function App() {
   const [context, setContext] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState(null);
 
-  useEffect(() => {
-    apiRequest("/api/session")
-      .then((session) => setContext(session))
-      .catch((error) => { if (error.status !== 401) console.error(error); })
-      .finally(() => setLoading(false));
+  const loadSession = useCallback(async () => {
+    setLoading(true);
+    setSessionError(null);
+    try {
+      setContext(await apiRequest("/api/session"));
+    } catch (error) {
+      if (error.status === 401) setContext(null);
+      else setSessionError(error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadSession(); }, [loadSession]);
 
   const logout = async () => {
     await apiRequest("/api/auth/logout", { method: "POST" });
@@ -1812,6 +1848,7 @@ export default function App() {
       </AppShell>
     );
   }
+  if (sessionError) return <ServiceConnectionScreen error={sessionError} onRetry={loadSession} isRetrying={loading} />;
   if (!context?.authenticated && !context?.user) return <AuthScreen onAuthenticated={setContext} />;
   if (!context.organization) return <OrganizationSetup context={context} onChange={setContext} />;
   if (!context.user.vocabulary?.onboardedAt) return <VocabularyOnboarding context={context} onChange={setContext} />;
