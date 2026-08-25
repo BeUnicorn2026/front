@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
   correctSpeakerCluster, correctTranscriptSegment, mergeSegments,
-  recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
+  microphoneConstraints, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -107,4 +107,15 @@ test("bounds autosave retries and preserves interrupted completion state", () =>
   assert.match(recordingStartErrorMessage({ name: "NotAllowedError" }), /마이크 권한/);
   assert.match(recordingStartErrorMessage({ name: "NotFoundError" }), /마이크/);
   assert.equal(recordingStartErrorMessage(new Error("서버 연결 실패")), "서버 연결 실패");
+});
+
+test("uses the selected microphone without dropping voice processing constraints", () => {
+  assert.deepEqual(microphoneConstraints("studio-mic"), {
+    channelCount: { ideal: 1 },
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    deviceId: { exact: "studio-mic" }
+  });
+  assert.equal("deviceId" in microphoneConstraints(), false);
 });

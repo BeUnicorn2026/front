@@ -890,6 +890,22 @@ function RecordingFooter({ recording, compact }) {
             <Stack width={compact ? "100%" : 180}>
               <ProgressBar label="마이크 입력 레벨" value={recording.audioLevel} isLabelHidden variant={recording.isRecording ? "error" : "neutral"} />
             </Stack>
+            <Selector
+              label="입력 마이크"
+              isLabelHidden
+              value={recording.selectedAudioInputId}
+              onChange={recording.setSelectedAudioInputId}
+              options={[
+                { value: "", label: "시스템 기본 마이크" },
+                ...recording.audioInputs.map(({ deviceId, label }, index) => ({
+                  value: deviceId,
+                  label: label || `마이크 ${index + 1}`
+                }))
+              ]}
+              isDisabled={recording.isRecording || recording.isBusy}
+              disabledMessage="기록 중에는 입력 마이크를 바꿀 수 없습니다."
+              width={compact ? "100%" : 220}
+            />
             {identifiesSpeakers && <FileInput
               label="녹음 파일 전사"
               value={null}

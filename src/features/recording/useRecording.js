@@ -152,6 +152,16 @@ export function recordingStartErrorMessage(error) {
   return messages[error?.name] || error?.message || "실시간 녹음을 시작하지 못했습니다.";
 }
 
+export function microphoneConstraints(deviceId = "") {
+  return {
+    channelCount: { ideal: 1 },
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {})
+  };
+}
+
 export function useRecording() {
   const [language, setLanguage] = useState("ko");
   const [mode, setMode] = useState("stt");
@@ -167,6 +177,8 @@ export function useRecording() {
   const [services, setServices] = useState({});
   const [meetings, setMeetings] = useState([]);
   const [activeMeeting, setActiveMeeting] = useState(null);
+  const [audioInputs, setAudioInputs] = useState([]);
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState("");
 
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -206,6 +218,24 @@ export function useRecording() {
     setNotice("");
     if (!recordingRef.current) setStatus("녹음 준비");
   }, [mode]);
+
+  const refreshAudioInputs = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const devices = (await navigator.mediaDevices.enumerateDevices())
+      .filter(({ kind, deviceId }) => kind === "audioinput" && deviceId);
+    setAudioInputs(devices);
+    setSelectedAudioInputId((current) => current && !devices.some(({ deviceId }) => deviceId === current) ? "" : current);
+    return devices;
+  }, []);
+
+  useEffect(() => {
+    refreshAudioInputs().catch(() => undefined);
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) return undefined;
+    const refresh = () => refreshAudioInputs().catch(() => undefined);
+    mediaDevices.addEventListener("devicechange", refresh);
+    return () => mediaDevices.removeEventListener("devicechange", refresh);
+  }, [refreshAudioInputs]);
 
   const changeMode = useCallback((nextMode) => {
     if (recordingRef.current) return;
@@ -546,9 +576,10 @@ export function useRecording() {
     let createdMeeting = null;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        audio: microphoneConstraints(selectedAudioInputId)
       });
       mediaStreamRef.current = stream;
+      refreshAudioInputs().catch(() => undefined);
       await openLiveSocket();
       if (socketDisconnectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
         throw new Error("실시간 연결이 종료되었습니다. 잠시 후 다시 시작해 주세요.");
@@ -574,6 +605,16 @@ export function useRecording() {
         if (recorder.state === "recording") recorder.stop();
         else finalizeRecording();
       }, { once: true });
+      stream.getAudioTracks().forEach((track) => track.addEventListener("ended", () => {
+        if (!recordingRef.current) return;
+        interruptedRef.current = true;
+        recordingRef.current = false;
+        setIsRecording(false);
+        setIsBusy(true);
+        setStatus("마이크 연결 종료 · 기록 보존 중");
+        setNotice("선택한 마이크 연결이 종료되어 현재까지의 기록을 저장합니다.");
+        if (recorder.state === "recording") recorder.stop();
+      }, { once: true }));
       recorder.start(1000);
       if (socketDisconnectedRef.current || socketRef.current?.readyState !== WebSocket.OPEN) {
         interruptedRef.current = true;
@@ -600,7 +641,7 @@ export function useRecording() {
       setStatus("연결하지 못했어요");
       setNotice(recordingStartErrorMessage(error));
     }
-  }, [cleanupCapture, finalizeRecording, openLiveSocket, saveActiveMeeting, services.deepgram, speakers.length, startLevelMonitor, startPcmStream, upsertMeeting]);
+  }, [cleanupCapture, finalizeRecording, openLiveSocket, refreshAudioInputs, saveActiveMeeting, selectedAudioInputId, services.deepgram, speakers.length, startLevelMonitor, startPcmStream, upsertMeeting]);
 
   const stop = useCallback(() => {
     if (!recordingRef.current) return;
@@ -752,6 +793,7 @@ export function useRecording() {
     language, setLanguage, mode, setMode: changeMode, isRecording, isBusy, status,
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, speakers, services, meetings, activeMeeting,
+    audioInputs, selectedAudioInputId, setSelectedAudioInputId,
     start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, openMeeting, resetMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
