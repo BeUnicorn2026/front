@@ -43,6 +43,13 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     sourcemap: mode !== "production",
     rollupOptions: {
+      onwarn(warning, warn) {
+        const isAstryxClientDirective = warning.code === "MODULE_LEVEL_DIRECTIVE"
+          && warning.message?.includes('"use client"')
+          && warning.id?.includes("node_modules/@astryxdesign/core/");
+        if (isAstryxClientDirective) return;
+        warn(warning);
+      },
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;

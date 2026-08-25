@@ -12,6 +12,8 @@ test("Cloudflare build publishes verifiable commit metadata and runs the bundle 
   ]);
   assert.match(configuration, /CF_PAGES_COMMIT_SHA/);
   assert.match(configuration, /deployment\.json/);
+  assert.match(configuration, /warning\.code === "MODULE_LEVEL_DIRECTIVE"/);
+  assert.match(configuration, /node_modules\/@astryxdesign\/core/);
   assert.match(packageManifest.scripts.build, /verify-production-build\.mjs/);
   const buildVerifier = await readFile(new URL("../scripts/verify-production-build.mjs", import.meta.url), "utf8");
   assert.match(buildVerifier, /react-vendor-/);
