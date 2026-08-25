@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
-  meetingsAfterRemoval, microphoneConstraints, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
+  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -158,6 +158,16 @@ test("uses the selected microphone without dropping voice processing constraints
     deviceId: { exact: "studio-mic" }
   });
   assert.equal("deviceId" in microphoneConstraints(), false);
+});
+
+test("turns live microphone levels into actionable recording feedback", () => {
+  assert.deepEqual(microphoneLevelPresentation(0, false), {
+    label: "말할 때 입력 레벨을 확인합니다", variant: "neutral"
+  });
+  assert.equal(microphoneLevelPresentation(1, true).variant, "neutral");
+  assert.equal(microphoneLevelPresentation(6, true).variant, "warning");
+  assert.equal(microphoneLevelPresentation(30, true).variant, "success");
+  assert.equal(microphoneLevelPresentation(90, true).variant, "error");
 });
 
 test("removes only the confirmed meeting from local document state", () => {

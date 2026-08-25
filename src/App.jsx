@@ -36,7 +36,7 @@ import {
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
-import { useRecording } from "./features/recording/useRecording";
+import { microphoneLevelPresentation, useRecording } from "./features/recording/useRecording";
 
 function useViewport() {
   const [viewport, setViewport] = useState(() => ({
@@ -859,6 +859,7 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
 
 function RecordingFooter({ recording, compact }) {
   const identifiesSpeakers = recording.mode === "speaker";
+  const microphoneLevel = microphoneLevelPresentation(recording.audioLevel, recording.isRecording);
   return (
     <LayoutFooter hasDivider label="녹음 컨트롤">
       <Section variant="muted" padding={3}>
@@ -881,8 +882,9 @@ function RecordingFooter({ recording, compact }) {
                 <Text type="code" color="secondary">{formatTime(recording.elapsed)}</Text>
               </Stack>
             </Stack>
-            <Stack width={compact ? "100%" : 180}>
-              <ProgressBar label="마이크 입력 레벨" value={recording.audioLevel} isLabelHidden variant={recording.isRecording ? "error" : "neutral"} />
+            <Stack gap={1} width={compact ? "100%" : 180}>
+              <ProgressBar label="마이크 입력 레벨" value={recording.audioLevel} isLabelHidden variant={microphoneLevel.variant} marks={recording.isRecording ? [{ value: 10, label: "적정 입력 시작" }, { value: 80, label: "과입력 시작" }] : undefined} />
+              <Text type="supporting" color="secondary">{microphoneLevel.label}</Text>
             </Stack>
             <Selector
               label="입력 마이크"

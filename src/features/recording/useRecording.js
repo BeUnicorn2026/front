@@ -180,6 +180,15 @@ export function microphoneConstraints(deviceId = "") {
   };
 }
 
+export function microphoneLevelPresentation(level, isRecording) {
+  if (!isRecording) return { label: "말할 때 입력 레벨을 확인합니다", variant: "neutral" };
+  const value = Math.max(0, Math.min(100, Number(level) || 0));
+  if (value <= 2) return { label: "말소리를 기다리는 중", variant: "neutral" };
+  if (value < 10) return { label: "입력이 작아요 · 마이크를 가까이", variant: "warning" };
+  if (value > 80) return { label: "입력이 너무 커요 · 조금 멀리", variant: "error" };
+  return { label: "마이크 입력 적정", variant: "success" };
+}
+
 export function useRecording() {
   const [language, setLanguage] = useState("ko");
   const [mode, setMode] = useState("stt");
@@ -484,11 +493,14 @@ export function useRecording() {
     context.createMediaStreamSource(stream).connect(analyser);
     const values = new Uint8Array(analyser.frequencyBinCount);
     let previousUpdate = 0;
+    let smoothedLevel = 0;
     const render = (time) => {
       analyser.getByteFrequencyData(values);
       if (time - previousUpdate > 90) {
         const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-        setAudioLevel(Math.min(100, Math.round(average * 1.4)));
+        const measuredLevel = Math.min(100, average * 1.4);
+        smoothedLevel = smoothedLevel * 0.7 + measuredLevel * 0.3;
+        setAudioLevel(Math.round(smoothedLevel));
         previousUpdate = time;
       }
       animationRef.current = requestAnimationFrame(render);
