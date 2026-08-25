@@ -1587,7 +1587,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const displayedSegments = recording.segments;
-  const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id);
+  const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id, readOnly);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
   const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";

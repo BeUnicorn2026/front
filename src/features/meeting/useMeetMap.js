@@ -4,7 +4,7 @@ import { apiRequest, postJson } from "../../api";
 const POLL_INTERVAL_MS = 1200;
 const MAXIMUM_POLLS = 75;
 
-export function useMeetMap(segments, meetingId) {
+export function useMeetMap(segments, meetingId, preferCached = false) {
   const [state, setState] = useState({ result: null, pending: false });
   const lastSubmittedRef = useRef("");
   const stableSegments = useMemo(() => (Array.isArray(segments) ? segments : [])
@@ -20,6 +20,13 @@ export function useMeetMap(segments, meetingId) {
       lastSubmittedRef.current = signature;
       setState((current) => ({ ...current, pending: true }));
       try {
+        if (meetingId && preferCached) {
+          const { meetMap: cached } = await apiRequest(`/api/meetings/${meetingId}/meetmap`);
+          if (cached) {
+            if (!cancelled) setState({ result: cached, pending: false });
+            return;
+          }
+        }
         const { job } = await postJson("/api/meetmap/jobs", { meetingId: meetingId || "", segments: stableSegments });
         let polls = 0;
         const poll = async () => {
@@ -46,7 +53,7 @@ export function useMeetMap(segments, meetingId) {
       window.clearTimeout(submitTimer);
       window.clearTimeout(pollTimer);
     };
-  }, [meetingId, signature, stableSegments]);
+  }, [meetingId, preferCached, signature, stableSegments]);
 
   return state;
 }

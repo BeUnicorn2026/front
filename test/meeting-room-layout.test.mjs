@@ -33,7 +33,7 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /\{!readOnly && \(/);
   assert.match(room, /readOnly \? "기록 닫기" : "회의 나가기"/);
   assert.match(room, /isReadOnly=\{readOnly\}/);
-  assert.match(room, /useMeetMap\(displayedSegments, recording\.activeMeeting\?\.id\)/);
+  assert.match(room, /useMeetMap\(displayedSegments, recording\.activeMeeting\?\.id, readOnly\)/);
   assert.match(room, /meetMap=\{meetMap\}/);
   assert.match(source, /<Heading level=\{2\}>구조도<\/Heading>/);
   assert.match(source, /<Heading level=\{2\}>대화 내용<\/Heading>/);
