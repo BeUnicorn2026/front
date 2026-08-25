@@ -23,6 +23,7 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /<Heading level=\{3\} maxLines=\{1\}>\{user\?\.name \|\| "나"\}<\/Heading>/);
   assert.match(room, /height: participantOpen \? "calc\(var\(--spacing-10\) \* 7\)" : "calc\(var\(--spacing-10\) \+ var\(--spacing-4\)\)"/);
   assert.match(room, /position: "absolute"/);
+  assert.match(room, /insetInlineStart: "50%"/);
   assert.match(room, /bottom: "var\(--spacing-0\)"/);
   assert.match(room, /overflow: "hidden"/);
   assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
@@ -33,7 +34,13 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /as="aside"/);
   assert.match(room, /height=\{desktop \? meetingControlHeight : "auto"\}/);
   assert.match(room, /bottom: desktop \? "var\(--spacing-0\)" : "var\(--spacing-4\)"/);
-  assert.match(room, /data-desktop-meeting-controls width="100%" height=\{meetingControlHeight\}/);
+  assert.match(room, /<LayoutFooter padding=\{0\}/);
+  assert.match(room, /data-desktop-meeting-controls/);
+  assert.match(room, /paddingInline=\{4\}/);
+  assert.match(room, /paddingBlock=\{2\}/);
+  assert.match(room, /\{participantControl\}/);
+  assert.match(room, /<LayoutHeader height="calc\(var\(--spacing-10\) \+ var\(--spacing-4\)\)" hasDivider=\{false\}/);
+  assert.match(room, /<LayoutContent\s+padding=\{desktop \? 3 : 0\}/);
   assert.match(room, /transform: inviteOpen \? "translateX\(0\)" : "translateX\(calc\(100% - var\(--spacing-10\) - var\(--spacing-4\)\)\)"/);
   assert.match(room, /icon=\{<Icon icon=\{inviteOpen \? "chevronRight" : "chevronLeft"\} \/>\}/);
   assert.match(room, />방 코드</);

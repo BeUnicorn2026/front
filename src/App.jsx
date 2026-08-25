@@ -1596,7 +1596,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const userAvatar = user?.avatarUrl || user?.profileImageUrl || user?.imageUrl;
   const selectedMicrophone = recording.audioInputs.find(({ deviceId }) => deviceId === recording.selectedAudioInputId);
   const microphoneLabel = selectedMicrophone?.label || "시스템 기본 마이크";
-  const meetingControlHeight = "calc(var(--spacing-10) * 2 + var(--spacing-2))";
+  const meetingControlHeight = "calc(var(--spacing-10) + var(--spacing-8))";
 
   const copyText = async (value, successMessage) => {
     try {
@@ -1621,20 +1621,25 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
       align="center"
       width={participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)"}
       height="calc(var(--spacing-10) + var(--spacing-4))"
-      style={{ position: "relative", zIndex: 3, transition }}
+      style={{
+        position: "absolute",
+        insetInlineStart: "50%",
+        bottom: "var(--spacing-2)",
+        zIndex: 4,
+        transform: "translateX(-50%)",
+        transition
+      }}
     >
       <Card
         padding={0}
         style={{
           position: "absolute",
-          insetInlineStart: "50%",
           bottom: "var(--spacing-0)",
           width: "100%",
           height: participantOpen ? "calc(var(--spacing-10) * 7)" : "calc(var(--spacing-10) + var(--spacing-4))",
           overflow: "hidden",
           borderRadius: participantOpen ? "var(--radius-container)" : "var(--radius-full)",
           boxShadow: participantOpen ? "var(--shadow-high)" : "var(--shadow-med)",
-          transform: "translateX(-50%)",
           transition
         }}
       >
@@ -1724,7 +1729,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
       <Layout
         height="fill"
         header={(
-          <LayoutHeader height={64} hasDivider label={readOnly ? "회의 기록 헤더" : "실시간 받아쓰기 헤더"}>
+          <LayoutHeader height="calc(var(--spacing-10) + var(--spacing-4))" hasDivider={false} label={readOnly ? "회의 기록 헤더" : "실시간 받아쓰기 헤더"}>
             <Toolbar
               label={readOnly ? "회의 기록 도구" : "실시간 받아쓰기 도구"}
               size="lg"
@@ -1750,9 +1755,12 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
           </LayoutHeader>
         )}
         content={(
-          <LayoutContent padding={desktop ? 6 : 0} style={{ minHeight: 0, overflow: "hidden", background: desktop ? "var(--color-background-body)" : "var(--color-background-surface)" }}>
+          <LayoutContent
+            padding={desktop ? 3 : 0}
+            style={{ minHeight: 0, overflow: "hidden", background: desktop ? "var(--color-background-body)" : "var(--color-background-surface)" }}
+          >
             {desktop ? (
-              <Stack data-desktop-meeting-workspace direction="horizontal" gap={4} height="100%" style={{ minHeight: 0 }}>
+              <Stack data-desktop-meeting-workspace direction="horizontal" gap={3} height="100%" style={{ minHeight: 0 }}>
                 <Stack width="32%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", flex: "none", minHeight: 0 }}>
                   <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} />
                 </Stack>
@@ -1773,14 +1781,29 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
           </LayoutContent>
         )}
         footer={desktop ? (
-          <LayoutFooter label={readOnly ? "회의 기록 제어" : "회의 제어"}>
-            <Stack data-desktop-meeting-controls width="100%" height={meetingControlHeight} paddingInline={6} paddingBlock={4} style={{ background: "var(--color-background-body)" }}>
+          <LayoutFooter padding={0} label={readOnly ? "회의 기록 제어" : "회의 제어"}>
+            <Stack
+              data-desktop-meeting-controls
+              width="100%"
+              height={meetingControlHeight}
+              paddingInline={4}
+              paddingBlock={2}
+              style={{ position: "relative", zIndex: 3, background: "var(--color-background-body)" }}
+            >
               <Toolbar
                 label={readOnly ? "회의 기록 제어" : "데스크톱 회의 제어"}
                 size="lg"
                 startContent={<Button label={readOnly ? "기록 닫기" : "회의 나가기"} icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} style={{ color: "var(--color-text-red)" }} />}
-                centerContent={participantControl}
+                centerContent={(
+                  <Stack
+                    aria-hidden
+                    width={participantOpen ? "calc(var(--spacing-10) * 9)" : "calc(var(--spacing-10) * 7)"}
+                    height="calc(var(--spacing-10) + var(--spacing-4))"
+                    style={{ transition }}
+                  />
+                )}
               />
+              {participantControl}
             </Stack>
           </LayoutFooter>
         ) : undefined}
