@@ -368,6 +368,41 @@ export function buildDialogueMapTrees(segments, { maximumNodes = 7 } = {}) {
   }).filter(Boolean);
 }
 
+export function buildDialogueMapTreesFromResult(result, segments) {
+  const sourceSegments = Array.isArray(segments) ? segments : [];
+  return (Array.isArray(result?.topics) ? result.topics : []).map((topic, topicIndex) => {
+    const used = new Set();
+    const nodes = (Array.isArray(topic?.nodes) ? topic.nodes : []).map((node, nodeIndex) => {
+      const segmentIndex = Number(node?.segmentIndex);
+      const segment = sourceSegments[segmentIndex];
+      const id = String(node?.id || `ai-topic-${topicIndex}-node-${nodeIndex}`);
+      if (!segment || used.has(segmentIndex) || !["question", "position", "pro", "con"].includes(node?.kind)) return null;
+      used.add(segmentIndex);
+      return {
+        id,
+        kind: node.kind,
+        label: summarizeDialogueNode(node.summary || segment.text),
+        meta: `${segment.speaker || "화자"} · ${formatTime(segment.start)}`,
+        pending: false,
+        parentId: nodeIndex ? String(node.parentId || "") : undefined,
+        relation: nodeIndex ? String(node.relation || "연결") : undefined
+      };
+    }).filter(Boolean);
+    if (!nodes.length) return null;
+    const known = new Set(nodes.map(({ id }) => id));
+    const root = nodes[0];
+    const children = nodes.slice(1).map((node) => ({ ...node, parentId: known.has(node.parentId) ? node.parentId : root.id }));
+    return {
+      id: String(topic?.id || `ai-topic-${topicIndex}`),
+      index: topicIndex,
+      label: String(topic?.label || root.label),
+      root: { ...root, topicIndex },
+      children,
+      links: children.map((node) => ({ id: `${node.id}-${node.parentId}`, from: node.id, to: node.parentId, relation: node.relation }))
+    };
+  }).filter(Boolean);
+}
+
 export function buildDialogueMapLayout(trees) {
   const source = Array.isArray(trees) ? trees : [];
   const width = 560;

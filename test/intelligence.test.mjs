@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, dialogueNodeKind, extractKeywords, meetingStatusPresentation, segmentDialogueTopics, summarizeDialogueNode, wrapMindMapLabel } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildDialogueMapTreesFromResult, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout, deriveActions, deriveTerms, dialogueNodeKind, extractKeywords, meetingStatusPresentation, segmentDialogueTopics, summarizeDialogueNode, wrapMindMapLabel } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -112,6 +112,19 @@ test("turns transcript evidence into incremental dialogue trees", () => {
       assert.equal(overlaps, false);
     }
   }
+});
+
+test("turns validated Go MeetMap output into the same tree renderer", () => {
+  const trees = buildDialogueMapTreesFromResult({ topics: [{
+    id: "topic-1", label: "인증 논의", nodes: [
+      { id: "node-1", segmentIndex: 0, kind: "question", summary: "인증 오류 원인은 무엇인가요" },
+      { id: "node-2", segmentIndex: 1, kind: "position", summary: "로그인 API 테스트를 추가합니다", parentId: "node-1", relation: "답변" }
+    ]
+  }] }, segments);
+  assert.equal(trees.length, 1);
+  assert.equal(trees[0].root.kind, "question");
+  assert.equal(trees[0].children[0].parentId, "node-1");
+  assert.equal(trees[0].links[0].relation, "답변");
 });
 
 test("live action preview assigns only evidence-backed owners and due dates", () => {

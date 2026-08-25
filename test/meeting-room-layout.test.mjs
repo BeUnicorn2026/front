@@ -33,6 +33,8 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /\{!readOnly && \(/);
   assert.match(room, /readOnly \? "기록 닫기" : "회의 나가기"/);
   assert.match(room, /isReadOnly=\{readOnly\}/);
+  assert.match(room, /useMeetMap\(displayedSegments, recording\.activeMeeting\?\.id\)/);
+  assert.match(room, /meetMap=\{meetMap\}/);
   assert.match(source, /<Heading level=\{2\}>구조도<\/Heading>/);
   assert.match(source, /<Heading level=\{2\}>대화 내용<\/Heading>/);
 
@@ -58,6 +60,7 @@ test("live transcript follows interim updates while respecting manual scroll", a
   assert.match(feed, /segment\.pending && <StatusDot/);
   assert.match(feed, /wordBreak: "keep-all"/);
   assert.match(feed, /buildDialogueMapTrees\(segments\)/);
+  assert.match(feed, /buildDialogueMapTreesFromResult\(meetMap\.result, segments\)/);
   assert.match(feed, /buildDialogueMapLayout\(trees\)/);
   assert.match(feed, /data-dialogue-tree/);
   assert.match(feed, /markerEnd="url\(#dialogue-tree-arrow\)"/);

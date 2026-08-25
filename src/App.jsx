@@ -36,13 +36,14 @@ import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiEndpoint, apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout,
+  ROLE_OPTIONS, buildAnalyzedStructure, buildDialogueMapLayout, buildDialogueMapTrees, buildDialogueMapTreesFromResult, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, buildStructureDiagramLayout,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 import { BillingPage } from "./features/billing/BillingPage";
+import { useMeetMap } from "./features/meeting/useMeetMap";
 
 function useViewport() {
   const [viewport, setViewport] = useState(() => ({
@@ -1481,8 +1482,10 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
   );
 }
 
-function LiveStructurePanel({ segments, isRecording, isReadOnly = false }) {
-  const trees = useMemo(() => buildDialogueMapTrees(segments), [segments]);
+function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap }) {
+  const trees = useMemo(() => meetMap?.result?.topics?.length
+    ? buildDialogueMapTreesFromResult(meetMap.result, segments)
+    : buildDialogueMapTrees(segments), [meetMap?.result, segments]);
   const layout = useMemo(() => buildDialogueMapLayout(trees), [trees]);
   const activeNodeId = isRecording ? trees.at(-1)?.children.at(-1)?.id || trees.at(-1)?.root.id : null;
   const presentation = {
@@ -1499,8 +1502,8 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false }) {
           <Heading level={2}>구조도</Heading>
           <StatusDot
             variant={isRecording ? "error" : "neutral"}
-            label={isRecording ? "분석 중" : `${trees.length}개 주제`}
-            isPulsing={isRecording}
+            label={meetMap?.pending ? "구조 갱신 중" : isRecording ? "분석 중" : `${trees.length}개 주제`}
+            isPulsing={Boolean(meetMap?.pending || isRecording)}
           />
         </Stack>
       </Stack>
@@ -1584,6 +1587,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
   const displayedSegments = recording.segments;
+  const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   const roomLink = `${window.location.origin}/record?room=${encodeURIComponent(roomCode)}`;
   const transition = reducedMotion ? "none" : "all var(--duration-medium) var(--motion-navigation-ease)";
@@ -1748,7 +1752,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, roomCode, use
             {desktop ? (
               <Stack data-desktop-meeting-workspace direction="horizontal" gap={4} height="100%" style={{ minHeight: 0 }}>
                 <Stack width="32%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", flex: "none", minHeight: 0 }}>
-                  <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} />
+                  <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} />
                 </Stack>
                 <Stack width="100%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}>
                   <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
