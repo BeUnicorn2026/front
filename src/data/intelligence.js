@@ -139,6 +139,59 @@ export function buildAnalyzedStructure(intelligence, segments) {
   };
 }
 
+export function wrapMindMapLabel(label, maximumCharacters = 18) {
+  const normalized = String(label || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return ["이름 없는 주제"];
+  if (normalized.length <= maximumCharacters) return [normalized];
+
+  const firstWindow = normalized.slice(0, maximumCharacters + 1);
+  const wordBoundary = firstWindow.lastIndexOf(" ");
+  const breakAt = wordBoundary >= Math.floor(maximumCharacters / 2) ? wordBoundary : maximumCharacters;
+  const firstLine = normalized.slice(0, breakAt).trim();
+  const remainder = normalized.slice(breakAt).trim();
+  if (remainder.length <= maximumCharacters) return [firstLine, remainder];
+  return [firstLine, `${remainder.slice(0, maximumCharacters - 1).trimEnd()}…`];
+}
+
+export function buildMindMapLayout(blocks, selectedId, { maximumVisible = 18 } = {}) {
+  const source = Array.isArray(blocks) ? blocks : [];
+  const visibleLimit = Math.max(4, Math.min(20, Math.floor(Number(maximumVisible) || 18)));
+  const selectedIndex = Math.max(0, source.findIndex(({ id }) => id === selectedId));
+  const windowStart = Math.max(0, Math.min(
+    selectedIndex - Math.floor(visibleLimit / 2),
+    Math.max(0, source.length - visibleLimit)
+  ));
+  const visible = source.slice(windowStart, windowStart + visibleLimit);
+  const width = 1000;
+  const nodeWidth = 230;
+  const nodeHeight = 64;
+  const rowPitch = 80;
+  const rows = Math.ceil(visible.length / 2);
+  const height = Math.max(480, 112 + Math.max(0, rows - 1) * rowPitch);
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const nodes = visible.map((block, localIndex) => ({
+    ...block,
+    globalIndex: windowStart + localIndex,
+    side: localIndex % 2 === 0 ? "left" : "right",
+    x: localIndex % 2 === 0 ? 145 : 855,
+    y: 56 + Math.floor(localIndex / 2) * rowPitch,
+    labelLines: wrapMindMapLabel(block.label)
+  }));
+
+  return {
+    centerX,
+    centerY,
+    height,
+    nodeHeight,
+    nodeWidth,
+    nodes,
+    selectedIndex,
+    width,
+    windowStart
+  };
+}
+
 export function deriveTerms(segments, knownTerms = [], catalog = []) {
   const known = new Set(knownTerms.map((term) => term.toLocaleLowerCase()));
   const found = new Map();

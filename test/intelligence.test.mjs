@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation } from "../src/data/intelligence.js";
+import { buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks, deriveActions, deriveTerms, extractKeywords, meetingStatusPresentation, wrapMindMapLabel } from "../src/data/intelligence.js";
 
 const segments = [
   { speaker: "민수", start: 0, end: 3, text: "인증 오류 원인을 확인하고 로그인 API를 수정하겠습니다" },
@@ -36,6 +36,33 @@ test("uses one validated evidence model for analyzed outline, tree and mind map"
   assert.equal(structure.tree[0].children.length, 1);
   assert.match(structure.tree[0].children[0].children.at(-1).label, /지수.*로그인 API 테스트/);
   assert.equal(structure.tree[0].children.some(({ id }) => id === "topic-stale"), false);
+});
+
+test("lays out long meeting mind maps without overlapping topic nodes", () => {
+  const blocks = Array.from({ length: 40 }, (_, index) => ({
+    id: `topic-${index}`,
+    label: `${index + 1}번째 긴 회의 주제와 결정 사항`,
+    start: index * 10,
+    segments: [{ text: "근거" }]
+  }));
+  const layout = buildMindMapLayout(blocks, "topic-31", { maximumVisible: 18 });
+  assert.equal(layout.nodes.length, 18);
+  assert.ok(layout.nodes.some(({ id }) => id === "topic-31"));
+  assert.equal(layout.selectedIndex, 31);
+  for (const side of ["left", "right"]) {
+    const nodes = layout.nodes.filter((node) => node.side === side);
+    for (let index = 1; index < nodes.length; index += 1) {
+      assert.ok(nodes[index].y - nodes[index - 1].y >= layout.nodeHeight);
+    }
+  }
+});
+
+test("keeps mind map labels readable in no more than two lines", () => {
+  assert.deepEqual(wrapMindMapLabel("짧은 주제"), ["짧은 주제"]);
+  const lines = wrapMindMapLabel("모바일에서 확인해야 하는 아주 긴 회의 주제와 결정 사항", 12);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((line) => line.length <= 12));
+  assert.ok(lines[1].endsWith("…"));
 });
 
 test("live action preview assigns only evidence-backed owners and due dates", () => {

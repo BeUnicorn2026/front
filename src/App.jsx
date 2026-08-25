@@ -32,7 +32,7 @@ import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
 import { apiEndpoint, apiRequest, postJson, putJson } from "./api";
 import {
-  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildStructureBlocks,
+  ROLE_OPTIONS, buildAnalyzedStructure, buildMeetingStructure, buildMindMapLayout, buildStructureBlocks,
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { useRecording } from "./features/recording/useRecording";
@@ -764,20 +764,18 @@ function StructureDiagram({ blocks, selectedId, onSelect, isRecording }) {
 }
 
 function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
+  const nodeRefs = useRef(new Map());
   if (!blocks.length) {
     return <Banner status="info" title="첫 발화를 기다리는 중" description="대화가 들어오면 중심 주제와 발화 구간이 연결됩니다." />;
   }
-  const selectedIndex = Math.max(0, blocks.findIndex(({ id }) => id === selectedId));
-  const windowStart = Math.max(0, Math.min(selectedIndex - 7, blocks.length - 16));
-  const visible = blocks.slice(windowStart, windowStart + 16);
-  const centerX = 420;
-  const centerY = 310;
-  const radiusX = 325;
-  const radiusY = 245;
-  const nodes = visible.map((block, index) => {
-    const angle = ((Math.PI * 2) / visible.length) * index - Math.PI / 2;
-    return { ...block, x: centerX + Math.cos(angle) * radiusX, y: centerY + Math.sin(angle) * radiusY };
-  });
+  const layout = buildMindMapLayout(blocks, selectedId, { maximumVisible: compact ? 12 : 18 });
+  const { centerX, centerY, height, nodeHeight, nodeWidth, nodes, selectedIndex, width } = layout;
+  const focusNode = (targetIndex) => {
+    const target = blocks[targetIndex];
+    if (!target) return;
+    onSelect(target.id);
+    window.requestAnimationFrame(() => nodeRefs.current.get(target.id)?.focus());
+  };
   return (
     <Stack gap={4}>
       <Stack direction={compact ? "vertical" : "horizontal"} justify="between" align={compact ? "stretch" : "center"} gap={2}>
@@ -790,49 +788,69 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
           <Button label="다음 주제" variant="secondary" size="sm" isDisabled={selectedIndex >= blocks.length - 1} onClick={() => onSelect(blocks[selectedIndex + 1]?.id)} />
         </Stack>
       </Stack>
-      {blocks.length > visible.length && (
-        <Banner status="info" title={`전체 ${blocks.length}개 중 선택 주제 주변 ${visible.length}개를 표시합니다.`} description="이전·다음 주제로 이동하면 마인드맵 표시 범위도 함께 이동합니다. 트리 보기에서는 전체 계층을 한 번에 탐색할 수 있습니다." />
+      {blocks.length > nodes.length && (
+        <Banner status="info" title={`전체 ${blocks.length}개 중 선택 주제 주변 ${nodes.length}개를 표시합니다.`} description="이전·다음 주제로 이동하면 마인드맵 표시 범위도 함께 이동합니다. 트리 보기에서는 전체 계층을 한 번에 탐색할 수 있습니다." />
       )}
-      <Card variant="muted" padding={compact ? 1 : 3}>
-      <svg viewBox="0 0 840 620" width="100%" height={compact ? 420 : 560} role="img" aria-label={`전체 ${blocks.length}개 중 ${visible.length}개 주제를 표시한 실제 회의 마인드맵`}>
-        <title>실제 회의 마인드맵</title>
+      <Card variant="muted" padding={compact ? 1 : 3} style={{ overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${width} ${height}`} width={compact ? 760 : "100%"} height={compact ? Math.round(height * 0.76) : height} role="group" aria-label={`전체 ${blocks.length}개 중 ${nodes.length}개 주제를 표시한 실제 회의 마인드맵`}>
+        <title>실제 발화 근거로 구성한 회의 마인드맵</title>
         {nodes.map((node) => (
-          <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="var(--color-border-emphasized)" strokeWidth="2" />
+          <path
+            key={`line-${node.id}`}
+            d={node.side === "left"
+              ? `M ${centerX - 90} ${centerY} C ${centerX - 210} ${centerY}, ${node.x + nodeWidth / 2 + 70} ${node.y}, ${node.x + nodeWidth / 2} ${node.y}`
+              : `M ${centerX + 90} ${centerY} C ${centerX + 210} ${centerY}, ${node.x - nodeWidth / 2 - 70} ${node.y}, ${node.x - nodeWidth / 2} ${node.y}`}
+            fill="none"
+            stroke="var(--color-border-emphasized)"
+            strokeWidth="2"
+          />
         ))}
         <g>
-          <rect x="342" y="274" width="156" height="72" rx="24" fill="var(--color-accent)" />
-          <text x={centerX} y="305" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">현재 회의</text>
-          <text x={centerX} y="329" textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-sm)">{blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 실제 발화</text>
+          <rect x={centerX - 90} y={centerY - 38} width="180" height="76" rx="20" fill="var(--color-accent)" />
+          <text x={centerX} y={centerY - 4} textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-lg)" fontWeight="var(--font-weight-semibold)">현재 회의</text>
+          <text x={centerX} y={centerY + 21} textAnchor="middle" fill="var(--color-on-accent)" fontSize="var(--font-size-sm)">{blocks.reduce((sum, block) => sum + block.segments.length, 0)}개 실제 발화</text>
         </g>
         {nodes.map((node) => (
           <g
             key={node.id}
+            ref={(element) => {
+              if (element) nodeRefs.current.set(node.id, element);
+              else nodeRefs.current.delete(node.id);
+            }}
             role="button"
-            tabIndex={0}
+            tabIndex={node.globalIndex === selectedIndex ? 0 : -1}
             cursor="pointer"
-            aria-label={`${node.label} 주제 열기`}
-            aria-pressed={selectedId === node.id}
+            aria-label={`${node.globalIndex + 1}번째 주제 ${node.label}, ${formatTime(node.start)}, 발화 ${node.segments.length}개`}
+            aria-pressed={node.globalIndex === selectedIndex}
             onClick={() => onSelect(node.id)}
-            onFocus={() => onSelect(node.id)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onSelect(node.id);
               }
+              if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                event.preventDefault();
+                focusNode(Math.min(blocks.length - 1, node.globalIndex + 1));
+              }
+              if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                event.preventDefault();
+                focusNode(Math.max(0, node.globalIndex - 1));
+              }
             }}
           >
-            <rect x={node.x - 66} y={node.y - 30} width="132" height="60" rx="18" fill="var(--color-background-card)" stroke={selectedId === node.id ? "var(--color-accent)" : "var(--color-border)"} strokeWidth={selectedId === node.id ? "4" : "2"} />
-            <text x={node.x} y={node.y - 3} textAnchor="middle" fill="var(--color-text-primary)" fontSize="var(--font-size-base)" fontWeight="var(--font-weight-semibold)">
-              {node.label.length > 15 ? `${node.label.slice(0, 15)}…` : node.label}
+            <title>{node.label}</title>
+            <rect x={node.x - nodeWidth / 2} y={node.y - nodeHeight / 2} width={nodeWidth} height={nodeHeight} rx="16" fill="var(--color-background-card)" stroke={node.globalIndex === selectedIndex ? "var(--color-accent)" : "var(--color-border)"} strokeWidth={node.globalIndex === selectedIndex ? "4" : "2"} />
+            <text x={node.x} y={node.labelLines.length === 1 ? node.y - 7 : node.y - 15} textAnchor="middle" fill="var(--color-text-primary)" fontSize="var(--font-size-base)" fontWeight="var(--font-weight-semibold)">
+              {node.labelLines.map((line, lineIndex) => <tspan key={`${node.id}-line-${lineIndex}`} x={node.x} dy={lineIndex === 0 ? 0 : 17}>{line}</tspan>)}
             </text>
-            <text x={node.x} y={node.y + 18} textAnchor="middle" fill="var(--color-text-secondary)" fontSize="var(--font-size-sm)">
+            <text x={node.x} y={node.y + 23} textAnchor="middle" fill="var(--color-text-secondary)" fontSize="var(--font-size-sm)">
               {formatTime(node.start)} · {node.segments.length}개 발화
             </text>
           </g>
         ))}
       </svg>
       </Card>
-      <TopicEvidence block={blocks.find(({ id }) => id === selectedId)} />
+      <TopicEvidence block={blocks[selectedIndex]} />
     </Stack>
   );
 }
