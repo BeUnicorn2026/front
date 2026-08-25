@@ -5,7 +5,7 @@ import {
   liveRecordingStatusAfterEvent, liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
-  servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
+  persistMeetingCorrection, servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -157,6 +157,39 @@ test("continues the meeting save queue after a failed write", async () => {
   const queue = createMeetingSaveQueue();
   await assert.rejects(queue.enqueue(async () => { throw new Error("offline"); }), /offline/);
   assert.equal(await queue.enqueue(async () => "saved"), "saved");
+});
+
+test("applies completed-document corrections only after persistence succeeds", async () => {
+  const order = [];
+  const result = await persistMeetingCorrection({
+    isRecording: false,
+    persist: async () => { order.push("persist"); return "saved"; },
+    apply: () => order.push("apply"),
+    retry: () => order.push("retry")
+  });
+  assert.deepEqual(order, ["persist", "apply"]);
+  assert.deepEqual(result, { value: "saved", saved: true, retrying: false, error: null });
+
+  await assert.rejects(persistMeetingCorrection({
+    isRecording: false,
+    persist: async () => { throw new Error("offline"); },
+    apply: () => order.push("unexpected-apply")
+  }), /offline/);
+  assert.equal(order.includes("unexpected-apply"), false);
+});
+
+test("retains live corrections and schedules retry when persistence is interrupted", async () => {
+  const order = [];
+  const result = await persistMeetingCorrection({
+    isRecording: true,
+    persist: async () => { order.push("persist"); throw new Error("offline"); },
+    apply: () => order.push("apply"),
+    retry: () => order.push("retry")
+  });
+  assert.deepEqual(order, ["apply", "persist", "retry"]);
+  assert.equal(result.saved, false);
+  assert.equal(result.retrying, true);
+  assert.match(result.error.message, /offline/);
 });
 
 test("uses the selected microphone without dropping voice processing constraints", () => {

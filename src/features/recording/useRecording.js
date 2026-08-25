@@ -177,6 +177,19 @@ export function createMeetingSaveQueue() {
   };
 }
 
+export async function persistMeetingCorrection({ isRecording, persist, apply, retry }) {
+  if (isRecording) apply();
+  try {
+    const value = await persist();
+    if (!isRecording) apply();
+    return { value, saved: true, retrying: false, error: null };
+  } catch (error) {
+    if (!isRecording) throw error;
+    retry?.();
+    return { value: null, saved: false, retrying: true, error };
+  }
+}
+
 export function recordingCompletionStatus(interrupted) {
   return interrupted ? "interrupted" : "completed";
 }
@@ -814,45 +827,65 @@ export function useRecording() {
     setNotice("");
   }, [changeMode]);
 
-  const correctSpeaker = useCallback((target, speakerName) => {
+  const correctSpeaker = useCallback(async (target, speakerName) => {
     const registered = speakers.some(({ name }) => name === speakerName);
     const next = correctSpeakerCluster(segments, target, speakerName, registered);
-    if (registered && target.sourceSpeaker != null) {
-      speakerCorrectionsRef.current.set(String(target.sourceSpeaker), speakerName);
-      if (recordingRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({
-          type: "speakerCorrection",
-          sourceSpeaker: String(target.sourceSpeaker),
-          speakerName
-        }));
+    const committed = next.filter(({ pending }) => !pending);
+    const apply = () => {
+      if (registered && target.sourceSpeaker != null) {
+        speakerCorrectionsRef.current.set(String(target.sourceSpeaker), speakerName);
+        if (recordingRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({
+            type: "speakerCorrection",
+            sourceSpeaker: String(target.sourceSpeaker),
+            speakerName
+          }));
+        }
       }
+      committedRef.current = committed;
+      setSegments(next);
+    };
+    try {
+      const result = await persistMeetingCorrection({
+        isRecording: recordingRef.current,
+        persist: () => saveActiveMeeting({ segments: committed, duration: elapsedRef.current }),
+        apply,
+        retry: () => scheduleAutosave(committed)
+      });
+      if (result.retrying) {
+        setNotice(`화자 수정은 유지했습니다. 연결이 복구되면 자동으로 다시 저장합니다. ${result.error.message}`);
+      }
+      return result.value;
+    } catch (error) {
+      setNotice(`화자 수정을 저장하지 못해 화면에 반영하지 않았습니다. ${error.message}`);
+      return null;
     }
-    committedRef.current = next.filter(({ pending }) => !pending);
-    setSegments(next);
-    saveActiveMeeting({ segments: committedRef.current, duration: elapsedRef.current })
-      .catch((error) => setNotice(`화자 수정을 저장하지 못했습니다. ${error.message}`));
-  }, [saveActiveMeeting, segments, speakers]);
+  }, [saveActiveMeeting, scheduleAutosave, segments, speakers]);
 
   const correctTranscript = useCallback(async (target, text) => {
     const next = correctTranscriptSegment(segments, target, text);
     const corrected = next.find((segment, index) => segment !== segments[index]);
     if (!corrected) return null;
-    const previousCorrections = transcriptCorrectionsRef.current;
-    transcriptCorrectionsRef.current = [
-      ...previousCorrections.filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end),
-      { start: corrected.start, end: corrected.end, text: corrected.text }
-    ];
-    committedRef.current = next.filter(({ pending }) => !pending);
-    setSegments(next);
-    try {
-      return await saveActiveMeeting({ segments: committedRef.current, duration: elapsedRef.current });
-    } catch (error) {
-      committedRef.current = segments.filter(({ pending }) => !pending);
-      setSegments(segments);
-      transcriptCorrectionsRef.current = previousCorrections;
-      throw error;
+    const committed = next.filter(({ pending }) => !pending);
+    const apply = () => {
+      transcriptCorrectionsRef.current = [
+        ...transcriptCorrectionsRef.current.filter((entry) => entry.start !== corrected.start || entry.end !== corrected.end),
+        { start: corrected.start, end: corrected.end, text: corrected.text }
+      ];
+      committedRef.current = committed;
+      setSegments(next);
+    };
+    const result = await persistMeetingCorrection({
+      isRecording: recordingRef.current,
+      persist: () => saveActiveMeeting({ segments: committed, duration: elapsedRef.current }),
+      apply,
+      retry: () => scheduleAutosave(committed)
+    });
+    if (result.retrying) {
+      setNotice(`문장 수정은 유지했습니다. 연결이 복구되면 자동으로 다시 저장합니다. ${result.error.message}`);
     }
-  }, [saveActiveMeeting, segments]);
+    return result.value;
+  }, [saveActiveMeeting, scheduleAutosave, segments]);
 
   const resetMeeting = useCallback(() => {
     activeMeetingRef.current = null;
