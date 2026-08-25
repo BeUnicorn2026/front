@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Badge } from "@astryxdesign/core/Badge";
@@ -697,30 +697,41 @@ function TopicEvidence({ block }) {
   );
 }
 
-function StructureDiagram({ blocks, selectedId, onSelect }) {
+function StructureDiagram({ blocks, selectedId, onSelect, isRecording }) {
   if (!blocks.length) {
     return <Banner status="info" title="아직 구조화할 발화가 없습니다." description="녹음을 시작하면 실제 대화 순서대로 구간이 만들어집니다." />;
   }
   return (
     <Stack gap={4}>
-      <Stack direction="horizontal" gap={3} wrap="wrap" align="stretch">
-        {blocks.map((block, index) => (
-        <Card key={block.id} width={260} padding={4} variant={selectedId === block.id ? "teal" : "default"} elevation={selectedId === block.id ? "sm" : "none"}>
-          <Stack gap={3}>
-            <Stack direction="horizontal" justify="between" align="center">
-              <Token label={`구간 ${index + 1}`} color={selectedId === block.id ? "teal" : "default"} size="sm" />
-              <Text type="code" color="secondary">{formatTime(block.start)}–{formatTime(block.end)}</Text>
+      <Card padding={4} style={{ background: "var(--brand-ink)", color: "var(--brand-cream)" }}>
+        <Stack direction="horizontal" gap={3} align="center" justify="between">
+          <Stack direction="horizontal" gap={3} align="center">
+            <Icon icon="tree" color="inherit" />
+            <Stack gap={0.5}>
+              <Heading level={2} color="inherit">회의 구조</Heading>
+              <Text type="supporting" color="inherit">주제 {blocks.length}개 · 실제 발화 {blocks.reduce((sum, block) => sum + block.segments.length, 0)}개</Text>
             </Stack>
-            <Heading level={3}>{block.label}</Heading>
-            <Stack direction="horizontal" gap={1} wrap="wrap">
-              {block.speakers.map((speaker) => <Token key={speaker} label={speaker} size="sm" />)}
-            </Stack>
-            <Text type="supporting">실제 발화 {block.segments.length}개</Text>
-            <Button label={selectedId === block.id ? "근거 표시 중" : "근거 보기"} variant={selectedId === block.id ? "secondary" : "ghost"} size="sm" onClick={() => onSelect(block.id)} />
           </Stack>
-        </Card>
+          <Text type="code" color="inherit">{formatTime(blocks[0].start)}</Text>
+        </Stack>
+      </Card>
+      <List hasDividers density="spacious" aria-label="실제 발화 기반 회의 구조">
+        {blocks.map((block, index) => (
+          <ListItem
+            key={block.id}
+            label={`${index + 1} · ${block.label}`}
+            description={block.summary || block.segments.slice(0, 2).map(({ text }) => text).join(" · ")}
+            startContent={<StatusDot variant={isRecording && index === blocks.length - 1 ? "accent" : "success"} label={isRecording && index === blocks.length - 1 ? "지금 이야기 중" : "정리된 주제"} isPulsing={isRecording && index === blocks.length - 1} />}
+            endContent={(
+              <Stack direction="horizontal" gap={2} align="center">
+                <Token label={isRecording && index === blocks.length - 1 ? "지금 주제" : selectedId === block.id ? "선택됨" : "정리됨"} color={isRecording && index === blocks.length - 1 ? "teal" : selectedId === block.id ? "yellow" : "green"} size="sm" />
+                <Text type="code" color="secondary">{formatTime(block.start)}</Text>
+              </Stack>
+            )}
+            onClick={() => onSelect(block.id)}
+          />
         ))}
-      </Stack>
+      </List>
       <TopicEvidence block={blocks.find(({ id }) => id === selectedId)} />
     </Stack>
   );
@@ -882,6 +893,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
   const [knowledgeAnswerBusy, setKnowledgeAnswerBusy] = useState("");
   const [knowledgeExplanations, setKnowledgeExplanations] = useState({});
   const [selectedBlockId, setSelectedBlockId] = useState(null);
+  const [followLiveStructure, setFollowLiveStructure] = useState(true);
   const displayedSegments = recording.segments;
   const knownTerms = context.user.vocabulary?.knownTerms || [];
   const localTerms = useMemo(() => deriveTerms(displayedSegments, knownTerms, vocabularyTerms), [displayedSegments, knownTerms, vocabularyTerms]);
@@ -892,21 +904,30 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
   const terms = useMemo(() => intelligence?.terms || localTerms, [intelligence, localTerms]);
   const actions = intelligence?.actions || localActions;
   const blocks = analyzedStructure.blocks.length ? analyzedStructure.blocks : localBlocks;
+  const selectStructureBlock = useCallback((blockId) => {
+    setSelectedBlockId(blockId);
+    setFollowLiveStructure(false);
+  }, []);
   const tree = useMemo(() => analyzedStructure.tree.length ? analyzedStructure.tree.map((root) => ({
     ...root,
-    children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
+    children: (root.children || []).map((block) => ({ ...block, onClick: () => selectStructureBlock(block.id) }))
   })) : localTree.map((root) => ({
     ...root,
-    children: (root.children || []).map((block) => ({ ...block, onClick: () => setSelectedBlockId(block.id) }))
-  })), [analyzedStructure.tree, localTree]);
+    children: (root.children || []).map((block) => ({ ...block, onClick: () => selectStructureBlock(block.id) }))
+  })), [analyzedStructure.tree, localTree, selectStructureBlock]);
   const identifiesSpeakers = recording.mode === "speaker";
   const unverifiedSpeakerCount = recording.speakers.filter((speaker) => !speaker.crossSessionVerificationCount).length;
   const visibleNotice = !identifiesSpeakers && recording.notice.includes("목소리를 한 명 이상 등록") ? "" : recording.notice;
 
   useEffect(() => {
     if (!blocks.length) return setSelectedBlockId(null);
-    if (!blocks.some(({ id }) => id === selectedBlockId)) setSelectedBlockId(blocks[0].id);
-  }, [blocks, selectedBlockId]);
+    if (recording.isRecording && followLiveStructure) return setSelectedBlockId(blocks.at(-1).id);
+    if (!blocks.some(({ id }) => id === selectedBlockId)) setSelectedBlockId(recording.isRecording ? blocks.at(-1).id : blocks[0].id);
+  }, [blocks, followLiveStructure, recording.isRecording, selectedBlockId]);
+
+  useEffect(() => {
+    setFollowLiveStructure(true);
+  }, [recording.activeMeeting?.id]);
 
   useEffect(() => {
     const meeting = recording.activeMeeting;
@@ -1123,6 +1144,9 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                 <Text color="secondary">{intelligence ? `${intelligence.source === "openai" ? "AI" : "로컬"} 분석 · ${new Date(intelligence.generatedAt).toLocaleString("ko-KR")}` : "녹음 중에는 실제 발화 기반 구조가 즉시 갱신됩니다."}</Text>
               </Stack>
               <Stack direction={compact ? "vertical" : "horizontal"} gap={2} align={compact ? "stretch" : "center"}>
+                {recording.isRecording && !followLiveStructure && (
+                  <Button label="최신 주제 따라가기" variant="ghost" size="sm" onClick={() => setFollowLiveStructure(true)} />
+                )}
                 {recording.activeMeeting && displayedSegments.length > 0 && !recording.isRecording && (
                   <Button
                     label={intelligence ? "다시 분석" : recording.services.meetingIntelligence === "openai" ? "AI로 정리" : "구조 정리"}
@@ -1149,7 +1173,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                 </SegmentedControl>
               </Stack>
             </Stack>
-            {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={setSelectedBlockId} />}
+            {view === "outline" && <StructureDiagram blocks={blocks} selectedId={selectedBlockId} onSelect={selectStructureBlock} isRecording={recording.isRecording} />}
             {view === "tree" && (
               <Stack gap={4}>
                 <Card variant="muted" padding={4}>
@@ -1161,7 +1185,7 @@ function MeetingPage({ context, recording, vocabularyTerms, onVocabularyRefresh 
                 </Section>
               </Stack>
             )}
-            {view === "mindmap" && <MeetingMindMap blocks={blocks} compact={compact} selectedId={selectedBlockId} onSelect={setSelectedBlockId} />}
+            {view === "mindmap" && <MeetingMindMap blocks={blocks} compact={compact} selectedId={selectedBlockId} onSelect={selectStructureBlock} />}
             {view === "transcript" && <TranscriptList segments={displayedSegments} speakers={recording.speakers} onCorrectSpeaker={recording.correctSpeaker} onCorrectText={recording.correctTranscript} compact={compact} mode={recording.mode} termCatalog={vocabularyTerms} />}
             {view === "overview" && <MeetingOverview segments={displayedSegments} mode={recording.mode} intelligence={intelligence} terms={terms} actions={actions} />}
           </Stack>
