@@ -36,7 +36,7 @@ import {
   deriveActions, deriveTerms, formatTime, matchingTerms, meetingStatusPresentation
 } from "./data/intelligence";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
-import { microphoneLevelPresentation, useRecording } from "./features/recording/useRecording";
+import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 
 function useViewport() {
   const [viewport, setViewport] = useState(() => ({
@@ -1662,7 +1662,10 @@ function SettingsPage({ context, recording }) {
                           <Text type="supporting">등록 음성과 내용 일치도 {Math.round(identification.verification.enrollmentAudioSimilarity * 1000) / 10}% · 별도 녹음으로 인정하려면 재인코딩이나 편집본이 아닌 다른 시점의 녹음이 필요합니다.</Text>
                         )}
                         <Text type="supporting">판정이 불안정하면 같은 사람의 다른 날·거리·마이크 샘플을 추가한 뒤 다시 시험해 보세요.</Text>
-                        {identification.verification?.recorded && expectedSpeakerId && identificationFile && (
+                        {identification.verification?.recorded && !speakerProbeCanBecomeSample(identification) && (
+                          <Text type="supporting">별도 녹음 검증은 기록했습니다. 이 파일을 등록 표본으로도 사용하려면 말소리가 5초 이상 필요합니다.</Text>
+                        )}
+                        {speakerProbeCanBecomeSample(identification) && expectedSpeakerId && identificationFile && (
                           <Stack direction="horizontal" justify="end">
                             <Button
                               label="이 검증 음성을 표본에 추가"

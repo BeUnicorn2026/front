@@ -198,6 +198,11 @@ export async function ensureAudioContextRunning(context) {
   return context;
 }
 
+export function speakerProbeCanBecomeSample(identification) {
+  return identification?.verification?.recorded === true
+    && Number(identification?.quality?.duration) >= 5;
+}
+
 export function useRecording() {
   const [language, setLanguage] = useState("ko");
   const [mode, setMode] = useState("stt");

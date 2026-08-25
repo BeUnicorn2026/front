@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   applyManualSpeakerCorrections, applyManualTranscriptCorrections, autosaveRetryDelay, ensureAudioContextRunning,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
-  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, recordingCompletionStatus, recordingStartErrorMessage, servicesAfterLiveEvent
+  meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, recordingCompletionStatus, recordingStartErrorMessage,
+  servicesAfterLiveEvent, speakerProbeCanBecomeSample
 } from "../src/features/recording/useRecording.js";
 
 test("combines STT confidence independently from speaker similarity", () => {
@@ -180,6 +181,12 @@ test("resumes a suspended audio context before streaming PCM", async () => {
     ensureAudioContextRunning({ state: "closed", resume: async () => undefined }),
     /실시간 음성 처리를 시작하지 못했습니다/
   );
+});
+
+test("offers a verified probe as a profile sample only when it meets enrollment duration", () => {
+  assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: true }, quality: { duration: 4.9 } }), false);
+  assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: false }, quality: { duration: 8 } }), false);
+  assert.equal(speakerProbeCanBecomeSample({ verification: { recorded: true }, quality: { duration: 5 } }), true);
 });
 
 test("removes only the confirmed meeting from local document state", () => {
