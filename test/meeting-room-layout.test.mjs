@@ -31,7 +31,7 @@ test("meeting room keeps portrait transcription and reveals a desktop map with c
   assert.match(room, /transition: participantSurfaceTransition/);
   assert.match(room, /pointerEvents: participantOpen \? "auto" : "none"/);
   assert.doesNotMatch(room, /role="dialog"/);
-  assert.match(room, /label=\{recording\.isRecording \? "기록 중지"/);
+  assert.match(room, /label=\{recording\.isRecording \? "마이크 끄기"/);
 
   assert.match(room, /data-room-invite-drawer/);
   assert.match(room, /roomAccessCode = typeof room\?\.accessCode === "string"/);

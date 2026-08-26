@@ -1990,8 +1990,8 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
               <Token label="열람" color="teal" size="sm" />
             ) : (
               <IconButton
-                label={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
-                tooltip={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : "기록 시작"}
+                label={recording.isRecording ? "마이크 끄기" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "마이크 켜기"}
+                tooltip={recording.isRecording ? "마이크 끄기" : recording.roomClosed ? "종료된 회의" : "마이크 켜기"}
                 icon={<Icon icon={recording.isRecording ? "stop" : recording.roomClosed ? "info" : meetingLimitReached ? "info" : "microphone"} />}
                 variant={recording.isRecording ? "destructive" : "primary"}
                 size="lg"
@@ -2018,7 +2018,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
           >
             <StatusDot
               variant={readOnly ? "neutral" : recording.isRecording ? "error" : "success"}
-              label={readOnly ? "기록 열람 중" : recording.isRecording ? "녹음 중" : "입장 완료"}
+              label={readOnly ? "기록 열람 중" : recording.isRecording ? "마이크 켜짐" : "마이크 꺼짐 · 수신 중"}
               isPulsing={!readOnly && recording.isRecording}
             />
             <Section variant="muted" padding={3}>
@@ -2056,7 +2056,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
               startContent={!desktop ? <IconButton label="회의 나가기" icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} /> : undefined}
               centerContent={(
                 <Stack direction="horizontal" align="center" gap={2}>
-                  <StatusDot variant={readOnly ? "neutral" : recording.isRecording ? "error" : "neutral"} label={readOnly ? "기록 열람" : recording.isRecording ? "녹음 중" : "대기 중"} isPulsing={!readOnly && recording.isRecording} />
+                  <StatusDot variant={readOnly ? "neutral" : recording.isRecording ? "error" : "neutral"} label={readOnly ? "기록 열람" : recording.isRecording ? "마이크 켜짐" : "마이크 꺼짐 · 수신 중"} isPulsing={!readOnly && recording.isRecording} />
                   <Text type="code" weight="semibold" style={{ fontSize: "var(--font-size-xl)", fontVariantNumeric: "tabular-nums" }}>
                     {formatTime(displayedElapsed)}
                   </Text>
@@ -2078,7 +2078,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                     <IconButton label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
                   )}
                   <IconButton
-                    label={recording.isRecording ? "기록 중지" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "기록 시작"}
+                    label={recording.isRecording ? "마이크 끄기" : recording.roomClosed ? "종료된 회의" : meetingLimitReached ? "플랜 한도 확인" : "마이크 켜기"}
                     icon={<Icon icon={recording.isRecording ? "stop" : recording.roomClosed ? "info" : meetingLimitReached ? "info" : "microphone"} />}
                     variant={recording.isRecording ? "destructive" : "primary"}
                     onClick={toggleRecording}
@@ -3430,7 +3430,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   const meetingEntryTimersRef = useRef([]);
   const recording = useRecording();
   const pageRef = useRef(page);
-  const recordingStopRef = useRef(recording.stop);
+  const recordingFinishRef = useRef(recording.finish);
   const pageTitles = {
     documents: "회의 문서",
     dictionary: "용어 사전",
@@ -3465,7 +3465,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   }, []);
 
   useEffect(() => { pageRef.current = page; }, [page]);
-  useEffect(() => { recordingStopRef.current = recording.stop; }, [recording.stop]);
+  useEffect(() => { recordingFinishRef.current = recording.finish; }, [recording.finish]);
 
   useEffect(() => {
     const handleHistoryNavigation = async () => {
@@ -3473,7 +3473,7 @@ function Workspace({ context, onContextChange, onLogout }) {
       meetingEntryTimersRef.current = [];
       setMeetingEntryPhase("idle");
       if (pageRef.current === "record") {
-        await recordingStopRef.current();
+        await recordingFinishRef.current();
         setRoom(null);
       }
       setPage(workspacePageFromPath(window.location.pathname));
@@ -3534,20 +3534,20 @@ function Workspace({ context, onContextChange, onLogout }) {
     );
   };
   const leaveMeeting = useCallback(async () => {
-    await recording.stop();
+    await recording.finish();
     setRoom(null);
     navigateTo("home");
-  }, [navigateTo, recording.stop]);
+  }, [navigateTo, recording.finish]);
 
   const endMeeting = useCallback(async () => {
     if (!room?.id || room.createdBy !== context.user.id) return;
-    await recording.stop();
+    await recording.finish();
     const result = await postJson(`/api/rooms/${encodeURIComponent(room.id)}/close`, {});
     if (result?.meeting) recording.updateMeeting(result.meeting);
     else await recording.reload();
     setRoom(null);
     navigateTo("home");
-  }, [context.user.id, navigateTo, recording.reload, recording.stop, recording.updateMeeting, room]);
+  }, [context.user.id, navigateTo, recording.finish, recording.reload, recording.updateMeeting, room]);
 
   const openMeeting = (meeting) => {
     beginMeetingEntry(

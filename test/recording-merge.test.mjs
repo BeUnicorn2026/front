@@ -5,8 +5,17 @@ import {
   liveRecordingStatusAfterEvent, liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, orderPersistedRoomSegments, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
-  persistMeetingCorrection, roomMeetingHydration, roomSocketClosure, servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
+  persistMeetingCorrection, roomMeetingHydration, roomSocketClosure, servicesAfterLiveEvent, setMediaStreamMuted, speakerProbeCanBecomeSample, watchAudioContext
 } from "../src/features/recording/useRecording.js";
+
+test("mutes and restores only microphone audio tracks", () => {
+  const tracks = [{ enabled: true }, { enabled: true }];
+  const stream = { getAudioTracks: () => tracks };
+  assert.equal(setMediaStreamMuted(stream, true), 2);
+  assert.deepEqual(tracks.map(({ enabled }) => enabled), [false, false]);
+  assert.equal(setMediaStreamMuted(stream, false), 2);
+  assert.deepEqual(tracks.map(({ enabled }) => enabled), [true, true]);
+});
 
 test("combines STT confidence independently from speaker similarity", () => {
   const result = mergeSegments(
