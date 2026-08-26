@@ -47,6 +47,7 @@ test("home and meeting room bypass navigation while supporting a staged room ent
   assert.match(source, /function AxolotlLoadingScreen/);
   assert.match(source, /src="\/characters\/meeting-entry-wave\.mp4"/);
   assert.match(source, /data-loading-screen/);
+  assert.match(source, /height: "100dvh", minHeight: "100vh"/);
   assert.match(source, /translateY\(100%\) scale\(0\.985\)/);
   assert.match(source, /회의실을 준비하고 있어요/);
 

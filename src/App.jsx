@@ -2524,7 +2524,12 @@ function meetingParticipantSummary(meeting, fallbackName) {
 
 function AxolotlLoadingScreen({ roomCode, title, description, spinnerLabel, meetingEntry = false }) {
   return (
-    <Layout height="fill" data-loading-screen data-meeting-entry-loading={meetingEntry || undefined}>
+    <Layout
+      height="fill"
+      data-loading-screen
+      data-meeting-entry-loading={meetingEntry || undefined}
+      style={{ width: "100%", height: "100dvh", minHeight: "100vh" }}
+    >
       <LayoutContent padding={0} style={{ background: "var(--brand-cream)" }}>
         <Center width="100%" height="100%" padding={6}>
           <Stack align="center" gap={6} maxWidth={420}>
