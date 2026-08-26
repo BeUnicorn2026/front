@@ -1,4 +1,4 @@
-# Voice Partition Frontend
+# ConThink Frontend
 
 ```bash
 npm install

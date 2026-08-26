@@ -14,4 +14,11 @@ test("outline, tree, and mind map are three distinct real-data renderers", async
   assert.match(outline, /ArrowRight[\s\S]*ArrowLeft/);
   assert.match(source, /<TreeList items=\{tree\}/);
   assert.match(source, /<MeetingMindMap blocks=\{blocks\}/);
+  assert.match(source, /function useDragPan\(\)/);
+  assert.match(source, /setPointerCapture/);
+  assert.match(source, /scrollLeft = drag\.scrollLeft - deltaX/);
+  assert.match(source, /onClickCapture/);
+  assert.match(outline, /\.\.\.dragPan\.panProps/);
+  assert.match(source.slice(mindMapStart), /\.\.\.dragPan\.panProps/);
+  assert.match(source, /width=\{layout\.width\}/);
 });

@@ -91,6 +91,67 @@ const MASCOT_ART = Object.freeze({
   empty: "/characters/empty-pink.png"
 });
 
+const LOADING_SCREEN_MINIMUM_MS = 4_000;
+const GRAPH_DRAG_THRESHOLD = 4;
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function useDragPan() {
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const finishDrag = useCallback((event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressClickRef.current = drag.moved;
+    drag.surface.releasePointerCapture?.(event.pointerId);
+    dragRef.current = null;
+    setIsDragging(false);
+  }, []);
+
+  return {
+    isDragging,
+    panProps: {
+      onPointerDown: (event) => {
+        if (event.button !== 0) return;
+        const surface = event.currentTarget;
+        dragRef.current = {
+          pointerId: event.pointerId,
+          surface,
+          startX: event.clientX,
+          startY: event.clientY,
+          scrollLeft: surface.scrollLeft,
+          scrollTop: surface.scrollTop,
+          moved: false
+        };
+        suppressClickRef.current = false;
+        surface.setPointerCapture?.(event.pointerId);
+        setIsDragging(true);
+      },
+      onPointerMove: (event) => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - drag.startX;
+        const deltaY = event.clientY - drag.startY;
+        if (Math.hypot(deltaX, deltaY) >= GRAPH_DRAG_THRESHOLD) drag.moved = true;
+        drag.surface.scrollLeft = drag.scrollLeft - deltaX;
+        drag.surface.scrollTop = drag.scrollTop - deltaY;
+      },
+      onPointerUp: finishDrag,
+      onPointerCancel: finishDrag,
+      onClickCapture: (event) => {
+        if (!suppressClickRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClickRef.current = false;
+      }
+    }
+  };
+}
+
 function MascotArtwork({ kind, alt, size = "calc(var(--spacing-10) * 3)" }) {
   return (
     <Stack
@@ -146,10 +207,10 @@ function BrandStory({ compact = false }) {
     <Stack gap={compact ? 4 : 8} maxWidth={compact ? "100%" : 540}>
       <Stack direction="horizontal" gap={2} align="center">
         <Card variant="teal" padding={2}>
-          <Icon icon="microphone" color="accent" label="Voice Partition" size="lg" />
+          <Icon icon="microphone" color="accent" label="ConThink" size="lg" />
         </Card>
         <Stack gap={0.5}>
-          <Text type="label" weight="semibold">VOICE PARTITION</Text>
+          <Text type="label" weight="semibold">ConThink</Text>
           <Text type="supporting">말하는 동안 정리되는 회의 기록</Text>
         </Stack>
       </Stack>
@@ -256,9 +317,9 @@ function AuthScreen({ onAuthenticated }) {
         {desktop && <Stack width="var(--layout-auth-brand-width)" height="100%" justify="between" padding={10} gap={8} style={{ background: "var(--brand-cream)", color: "var(--brand-ink)", flex: "none" }}>
             <Stack direction="horizontal" gap={2} align="center">
               <Stack width={36} height={36} align="center" justify="center" style={{ background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
-                <Icon icon="microphone" color="inherit" label="Voice Partition" size="lg" />
+                <Icon icon="microphone" color="inherit" label="ConThink" size="lg" />
               </Stack>
-              <Text type="large" weight="semibold">VOICE PARTITION</Text>
+              <Text type="large" weight="semibold">ConThink</Text>
             </Stack>
             <Stack gap={6} maxWidth={480}>
               <Stack direction="horizontal" gap={5} align="center">
@@ -290,9 +351,9 @@ function AuthScreen({ onAuthenticated }) {
                 <Stack direction="horizontal" justify="between" align="center" gap={3}>
                   <Stack direction="horizontal" gap={2} align="center">
                     <Stack width={36} height={36} align="center" justify="center" style={{ background: "var(--brand-mint)", color: "var(--brand-ink)", borderRadius: "var(--radius-element)" }}>
-                      <Icon icon="microphone" color="inherit" label="보이스 파티션" />
+                      <Icon icon="microphone" color="inherit" label="ConThink" />
                     </Stack>
-                    <Text weight="semibold">보이스 파티션</Text>
+                    <Text weight="semibold">ConThink</Text>
                   </Stack>
                   <MascotArtwork kind="welcome" alt="로그인을 반기는 파란 캐릭터" size="calc(var(--spacing-10) + var(--spacing-4))" />
                 </Stack>
@@ -808,6 +869,7 @@ function TopicEvidence({ block }) {
 
 function StructureDiagram({ blocks, selectedId, onSelect, isRecording, compact }) {
   const nodeRefs = useRef(new Map());
+  const dragPan = useDragPan();
   if (!blocks.length) {
     return <Banner status="info" title="아직 구조화할 발화가 없습니다." description="녹음을 시작하면 실제 대화 순서대로 구간이 만들어집니다." />;
   }
@@ -831,8 +893,13 @@ function StructureDiagram({ blocks, selectedId, onSelect, isRecording, compact }
           <Button label="다음 주제" variant="secondary" size="sm" isDisabled={selectedIndex >= blocks.length - 1} onClick={() => focusNode(selectedIndex + 1)} />
         </Stack>
       </Stack>
-      <Card variant="muted" padding={2} style={{ overflowX: "auto" }}>
-        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} width={compact ? 760 : "100%"} height={compact ? Math.round(layout.height * 0.76) : layout.height} role="group" aria-label={`${blocks.length}개 실제 회의 주제의 시간 흐름 구조도`}>
+      <Card
+        {...dragPan.panProps}
+        variant="muted"
+        padding={2}
+        style={{ overflow: "auto", cursor: dragPan.isDragging ? "grabbing" : "grab", touchAction: "none", userSelect: "none" }}
+      >
+        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} width={layout.width} height={layout.height} role="group" aria-label={`${blocks.length}개 실제 회의 주제의 시간 흐름 구조도`}>
           <title>실제 발화 순서로 구성한 회의 구조도</title>
           <defs>
             <marker id="structure-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -896,6 +963,7 @@ function StructureDiagram({ blocks, selectedId, onSelect, isRecording, compact }
 
 function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
   const nodeRefs = useRef(new Map());
+  const dragPan = useDragPan();
   if (!blocks.length) {
     return <Banner status="info" title="첫 발화를 기다리는 중" description="대화가 들어오면 중심 주제와 발화 구간이 연결됩니다." />;
   }
@@ -922,8 +990,13 @@ function MeetingMindMap({ blocks, compact, selectedId, onSelect }) {
       {blocks.length > nodes.length && (
         <Banner status="info" title={`전체 ${blocks.length}개 중 선택 주제 주변 ${nodes.length}개를 표시합니다.`} description="이전·다음 주제로 이동하면 마인드맵 표시 범위도 함께 이동합니다. 트리 보기에서는 전체 계층을 한 번에 탐색할 수 있습니다." />
       )}
-      <Card variant="muted" padding={compact ? 1 : 3} style={{ overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${width} ${height}`} width={compact ? 760 : "100%"} height={compact ? Math.round(height * 0.76) : height} role="group" aria-label={`전체 ${blocks.length}개 중 ${nodes.length}개 주제를 표시한 실제 회의 마인드맵`}>
+      <Card
+        {...dragPan.panProps}
+        variant="muted"
+        padding={compact ? 1 : 3}
+        style={{ overflow: "auto", cursor: dragPan.isDragging ? "grabbing" : "grab", touchAction: "none", userSelect: "none" }}
+      >
+      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="group" aria-label={`전체 ${blocks.length}개 중 ${nodes.length}개 주제를 표시한 실제 회의 마인드맵`}>
         <title>실제 발화 근거로 구성한 회의 마인드맵</title>
         {nodes.map((node) => (
           <path
@@ -1550,6 +1623,7 @@ function LiveTranscriptFeed({
 }
 
 function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap, liveMap }) {
+  const dragPan = useDragPan();
   const liveActive = Boolean(liveMap?.active && liveMap.result?.topics?.length);
   const trees = useMemo(() => {
     if (liveActive) return buildDialogueMapTreesFromResult(toRendererResult(liveMap, segments.length), segments);
@@ -1583,12 +1657,18 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap
           </Stack>
         </Stack>
       </Stack>
-      <Stack isScrollable height="100%" padding={3} style={{ minHeight: 0, background: "var(--color-background-muted)" }}>
+      <Stack
+        {...dragPan.panProps}
+        isScrollable
+        height="100%"
+        padding={3}
+        style={{ minHeight: 0, overflow: "auto", background: "var(--color-background-muted)", cursor: dragPan.isDragging ? "grabbing" : "grab", touchAction: "none", userSelect: "none" }}
+      >
         {trees.length ? (
           <svg
             data-dialogue-tree
             viewBox={`0 0 ${layout.width} ${layout.height}`}
-            width="100%"
+            width={layout.width}
             height={layout.height}
             role="img"
             aria-label={`${trees.length}개 주제와 ${layout.nodes.length - trees.length}개 발화를 연결한 대화 구조도`}
@@ -2442,9 +2522,9 @@ function meetingParticipantSummary(meeting, fallbackName) {
   return { names: visibleNames, count };
 }
 
-function MeetingEntryScreen({ roomCode }) {
+function AxolotlLoadingScreen({ roomCode, title, description, spinnerLabel, meetingEntry = false }) {
   return (
-    <Layout height="fill" data-meeting-entry-loading>
+    <Layout height="fill" data-loading-screen data-meeting-entry-loading={meetingEntry || undefined}>
       <LayoutContent padding={0} style={{ background: "var(--brand-cream)" }}>
         <Center width="100%" height="100%" padding={6}>
           <Stack align="center" gap={6} maxWidth={420}>
@@ -2466,17 +2546,29 @@ function MeetingEntryScreen({ roomCode }) {
               />
             </Stack>
             <Stack align="center" gap={2}>
-              <Heading level={1} type="display-3" textWrap="balance">회의실을 준비하고 있어요</Heading>
-              <Text color="secondary" justify="center">마이크와 실시간 받아쓰기를 연결하는 중입니다.</Text>
+              <Heading level={1} type="display-3" textWrap="balance">{title}</Heading>
+              <Text color="secondary" justify="center">{description}</Text>
             </Stack>
             <Stack direction="horizontal" gap={3} align="center">
-              <Spinner size="lg" aria-label="회의실 연결 중" />
-              <Text type="code" weight="semibold">{roomCode}</Text>
+              <Spinner size="lg" aria-label={spinnerLabel} />
+              {roomCode && <Text type="code" weight="semibold">{roomCode}</Text>}
             </Stack>
           </Stack>
         </Center>
       </LayoutContent>
     </Layout>
+  );
+}
+
+function MeetingEntryScreen({ roomCode }) {
+  return (
+    <AxolotlLoadingScreen
+      meetingEntry
+      roomCode={roomCode}
+      title="회의실을 준비하고 있어요"
+      description="마이크와 실시간 받아쓰기를 연결하는 중입니다."
+      spinnerLabel="회의실 연결 중"
+    />
   );
 }
 
@@ -2498,6 +2590,7 @@ function DashboardPage({
   const [dockUp, setDockUp] = useState(false);
   const [code, setCode] = useState(() => normalizeRoomCode(initialRoomCode));
   const [roomError, setRoomError] = useState("");
+  const [roomFeedbackActive, setRoomFeedbackActive] = useState(false);
   const [profileName, setProfileName] = useState(() => context.user.name || "");
   const [profileIntroduction, setProfileIntroduction] = useState(() => context.user.introduction || "");
   const [profileSaved, setProfileSaved] = useState(false);
@@ -2505,6 +2598,8 @@ function DashboardPage({
   const [profileError, setProfileError] = useState("");
   const codeInputRef = useRef(null);
   const dockCollapseTimerRef = useRef(null);
+  const roomFeedbackFrameRef = useRef(null);
+  const roomFeedbackSurfaceRef = useRef(null);
   const recentMeetings = recording.meetings.slice(0, 8);
   const roles = context.user.vocabulary?.roles || [];
   const knownTerms = context.user.vocabulary?.knownTerms || [];
@@ -2519,7 +2614,36 @@ function DashboardPage({
     }
   }, []);
 
-  useEffect(() => () => window.clearTimeout(dockCollapseTimerRef.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(dockCollapseTimerRef.current);
+    window.cancelAnimationFrame(roomFeedbackFrameRef.current);
+  }, []);
+  useEffect(() => {
+    if (!roomFeedbackActive || !roomFeedbackSurfaceRef.current) return undefined;
+    const surface = roomFeedbackSurfaceRef.current;
+    const tokens = window.getComputedStyle(document.documentElement);
+    const tokenDuration = Number.parseFloat(tokens.getPropertyValue(reducedMotion ? "--duration-medium" : "--duration-slow-min"));
+    const animation = surface.animate(
+      reducedMotion
+        ? [{ transform: "none" }, { transform: "none" }]
+        : [
+            { transform: "translateX(var(--spacing-0))" },
+            { transform: "translateX(calc(var(--spacing-2) * -1))" },
+            { transform: "translateX(var(--spacing-2))" },
+            { transform: "translateX(calc(var(--spacing-2) * -1))" },
+            { transform: "translateX(var(--spacing-2))" },
+            { transform: "translateX(calc(var(--spacing-1) * -1))" },
+            { transform: "translateX(var(--spacing-0))" }
+          ],
+      {
+        duration: tokenDuration,
+        easing: tokens.getPropertyValue("--ease-standard").trim(),
+        iterations: 1
+      }
+    );
+    animation.finished.then(() => setRoomFeedbackActive(false)).catch(() => undefined);
+    return () => animation.cancel();
+  }, [reducedMotion, roomFeedbackActive]);
   useEffect(() => {
     const handleGlobalTyping = (event) => {
       if (!dockUp || isEditableTarget(event.target)) return;
@@ -2541,6 +2665,11 @@ function DashboardPage({
       await onStart(code);
     } catch (error) {
       setRoomError(error.message || "회의실에 입장하지 못했습니다. 다시 시도해 주세요.");
+      if (error.code === "ROOM_NOT_FOUND") {
+        setRoomFeedbackActive(false);
+        window.cancelAnimationFrame(roomFeedbackFrameRef.current);
+        roomFeedbackFrameRef.current = window.requestAnimationFrame(() => setRoomFeedbackActive(true));
+      }
       codeInputRef.current?.focus();
     }
   };
@@ -2764,7 +2893,14 @@ function DashboardPage({
               transition: reducedMotion ? "none" : "transform var(--duration-slow) var(--motion-navigation-ease)"
             }}
           >
-            <Stack paddingInline={compact ? 3 : 4} paddingBlockStart={2} paddingBlockEnd={4} gap={3}>
+            <Stack
+              ref={roomFeedbackSurfaceRef}
+              paddingInline={compact ? 3 : 4}
+              paddingBlockStart={2}
+              paddingBlockEnd={4}
+              gap={3}
+              data-room-feedback={roomFeedbackActive ? "error" : "idle"}
+            >
               <Stack align="center" gap={2}>
                 <Stack width="var(--spacing-10)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} />
                 <Text weight="semibold">ROOM으로 생성 · 숫자로 입장</Text>
@@ -2793,6 +2929,7 @@ function DashboardPage({
                     return (
                       <Stack
                         key={index}
+                        data-room-code-cell
                         align="center"
                         justify="center"
                         width="100%"
@@ -2800,9 +2937,9 @@ function DashboardPage({
                         style={{
                           minWidth: 0,
                           borderRadius: "var(--radius-element)",
-                          background: character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
-                          boxShadow: `inset 0 0 0 var(--spacing-0-5) ${index === code.length ? "var(--color-accent)" : character ? "var(--color-accent)" : "var(--color-border)"}`,
-                          color: "var(--color-text-primary)",
+                          background: roomFeedbackActive ? "var(--color-error-muted)" : character ? "var(--color-accent-muted)" : "var(--color-background-muted)",
+                          boxShadow: `inset 0 0 0 var(--spacing-0-5) ${roomFeedbackActive ? "var(--color-error)" : index === code.length ? "var(--color-accent)" : character ? "var(--color-accent)" : "var(--color-border)"}`,
+                          color: roomFeedbackActive ? "var(--color-text-red)" : "var(--color-text-primary)",
                           fontFamily: "var(--font-family-code)",
                           fontSize: "var(--font-size-xl)",
                           fontWeight: "var(--font-weight-semibold)",
@@ -3319,7 +3456,7 @@ function Workspace({ context, onContextChange, onLogout }) {
       navigateTo("record");
       setMeetingEntryPhase("idle");
       meetingEntryTimersRef.current = [];
-    }, reducedMotion ? 360 : 1280));
+    }, LOADING_SCREEN_MINIMUM_MS + (reducedMotion ? 0 : 520)));
   }, [meetingEntryPhase, navigateTo, reducedMotion, recording.resetMeeting]);
 
   const startNewMeeting = async (nextRoomCode) => {
@@ -3405,10 +3542,10 @@ function Workspace({ context, onContextChange, onLogout }) {
         <TopNavHeading
           logo={(
             <Stack width={36} height={36} align="center" justify="center" style={{ color: "var(--brand-ink)", background: "var(--brand-mint)", borderRadius: "var(--radius-element)" }}>
-              <Icon icon="microphone" color="inherit" label="보이스 파티션" />
+              <Icon icon="microphone" color="inherit" label="ConThink" />
             </Stack>
           )}
-          heading={pageTitles[page] || "보이스 파티션"}
+          heading={pageTitles[page] || "ConThink"}
           subheading={compact ? undefined : context.user.email}
         />
       )}
@@ -3451,6 +3588,7 @@ export default function App() {
   const [sessionError, setSessionError] = useState(null);
 
   const loadSession = useCallback(async () => {
+    const loadingStartedAt = Date.now();
     setLoading(true);
     setSessionError(null);
     try {
@@ -3459,6 +3597,7 @@ export default function App() {
       if (error.status === 401) setContext(null);
       else setSessionError(error);
     } finally {
+      await wait(Math.max(0, LOADING_SCREEN_MINIMUM_MS - (Date.now() - loadingStartedAt)));
       setLoading(false);
     }
   }, []);
@@ -3473,19 +3612,11 @@ export default function App() {
 
   if (loading) {
     return (
-      <AppShell variant="surface" height="fill" contentPadding={0}>
-        <Center width="100%" height="100%" padding={6} style={{ background: "var(--brand-cream)" }}>
-          <Stack align="center" gap={5}>
-            <Stack width="calc(var(--spacing-10) + var(--spacing-4))" height="calc(var(--spacing-10) + var(--spacing-4))" align="center" justify="center" style={{ background: "var(--brand-mint)", color: "var(--brand-ink)", borderRadius: "var(--radius-container)" }}>
-              <Icon icon="microphone" color="inherit" label="보이스 파티션" size="lg" />
-            </Stack>
-            <Stack align="center" gap={2}>
-              <Heading level={1}>보이스 파티션</Heading>
-              <Spinner size="lg" label="워크스페이스를 불러오는 중입니다" />
-            </Stack>
-          </Stack>
-        </Center>
-      </AppShell>
+      <AxolotlLoadingScreen
+        title="ConThink"
+        description="워크스페이스를 불러오는 중입니다."
+        spinnerLabel="워크스페이스 연결 중"
+      />
     );
   }
   if (sessionError) return <ServiceConnectionScreen error={sessionError} onRetry={loadSession} isRetrying={loading} />;
