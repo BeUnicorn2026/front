@@ -48,8 +48,10 @@ import { BillingPage } from "./features/billing/BillingPage";
 import { useMeetMap } from "./features/meeting/useMeetMap";
 import { segmentTranslationSequence, usePersonalizedTranscript } from "./features/meeting/usePersonalizedTranscript";
 import {
+  VoiceEnrollmentDialog,
   accessCodeFromLocation,
   clearAccessCodeFromLocation,
+  enrollVoice,
   joinRoomByAccessCode
 } from "./features/voice-enrollment";
 
@@ -2597,6 +2599,7 @@ function DashboardPage({
   const [roomError, setRoomError] = useState("");
   const [roomErrorCode, setRoomErrorCode] = useState("");
   const [roomFeedbackActive, setRoomFeedbackActive] = useState(false);
+  const [voiceEnrollmentOpen, setVoiceEnrollmentOpen] = useState(false);
   const [profileName, setProfileName] = useState(() => context.user.name || "");
   const [profileIntroduction, setProfileIntroduction] = useState(() => context.user.introduction || "");
   const [profileSaved, setProfileSaved] = useState(false);
@@ -2609,6 +2612,7 @@ function DashboardPage({
   const recentMeetings = recording.meetings.slice(0, 8);
   const roles = context.user.vocabulary?.roles || [];
   const knownTerms = context.user.vocabulary?.knownTerms || [];
+  const hasSelfVoice = recording.speakers.some(({ createdBy, name }) => createdBy === context.user.id || (!createdBy && name === context.user.name));
   const ready = roomEntryAction(code).type !== "invalid";
   const transition = reducedMotion ? "none" : "all var(--duration-slow) var(--motion-navigation-ease)";
 
@@ -2708,6 +2712,16 @@ function DashboardPage({
       setProfileBusy(false);
     }
   };
+  const openVoiceEnrollment = () => {
+    setAccountOpen(true);
+    setAccountTab("settings");
+    setVoiceEnrollmentOpen(true);
+  };
+  const registerVoice = async (file) => {
+    const result = await enrollVoice(file);
+    await recording.reload();
+    return result;
+  };
 
   const accountContent = accountTab === "bio" ? (
     <Stack gap={3}>
@@ -2735,6 +2749,15 @@ function DashboardPage({
         options={[{ value: "", label: "시스템 기본 마이크" }, ...recording.audioInputs.map(({ deviceId, label }, index) => ({ value: deviceId, label: label || `마이크 ${index + 1}` }))]}
         width="100%"
       />
+      <Section variant="muted" padding={3}>
+        <Stack direction={compact ? "vertical" : "horizontal"} gap={3} align={compact ? "stretch" : "center"} justify="between">
+          <Stack gap={0.5}>
+            <Text weight="semibold">내 목소리</Text>
+            <Text type="supporting" color="secondary">{hasSelfVoice ? "등록된 목소리만 회의 텍스트로 기록합니다." : "약 12초 동안 안내 문장을 읽어 목소리를 등록해 주세요."}</Text>
+          </Stack>
+          <Button label={hasSelfVoice ? "다시 녹음" : "목소리 녹음"} variant={hasSelfVoice ? "secondary" : "primary"} size="sm" onClick={openVoiceEnrollment} />
+        </Stack>
+      </Section>
       <Stack direction="horizontal" gap={3} align="center" padding={3} style={{ borderRadius: "var(--radius-container)", background: "var(--color-background-muted)" }}>
         <StatusDot variant={microphoneLevelPresentation(recording.audioLevel, true).variant} label="입력 감도" />
         <ProgressBar label="마이크 입력 감도" value={recording.audioLevel} isLabelHidden />
@@ -2762,6 +2785,7 @@ function DashboardPage({
   );
 
   return (
+    <>
     <Layout
       height="fill"
       data-home-entry-phase={entryPhase}
@@ -2969,7 +2993,7 @@ function DashboardPage({
                       label="내 목소리 등록"
                       variant="secondary"
                       size="sm"
-                      onClick={(event) => { event.stopPropagation(); onNavigate("settings"); }}
+                      onClick={(event) => { event.stopPropagation(); openVoiceEnrollment(); }}
                     />
                   )}
                 </Stack>
@@ -2979,6 +3003,13 @@ function DashboardPage({
         </LayoutContent>
       )}
     />
+    <VoiceEnrollmentDialog
+      isOpen={voiceEnrollmentOpen}
+      onOpenChange={setVoiceEnrollmentOpen}
+      onEnroll={registerVoice}
+      title={hasSelfVoice ? "내 목소리 다시 녹음" : "내 목소리 등록"}
+    />
+    </>
   );
 }
 

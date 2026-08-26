@@ -85,7 +85,7 @@ test("capture hook stays isolated from transcription and meeting creation", asyn
   assert.doesNotMatch(source, /Deepgram|WebSocket|\/api\/meetings|postJson|apiRequest/);
 });
 
-test("meeting entry uses access invites without requiring canonical voice", async () => {
+test("home integrates self voice enrollment while preserving access invites", async () => {
   const [apiSource, appSource] = await Promise.all([
     readFile(apiUrl, "utf8"),
     readFile(appUrl, "utf8")
@@ -96,7 +96,9 @@ test("meeting entry uses access invites without requiring canonical voice", asyn
   assert.match(apiSource, /postJson\("\/api\/rooms\/join", \{ accessCode: normalized \}\)/);
   assert.match(apiSource, /URLSearchParams\(location\.search\)\.get\("access"\)/);
   assert.doesNotMatch(apiSource, /Deepgram|\/api\/speakers|form\.append\("voice"/);
-  assert.doesNotMatch(appSource, /<VoiceEnrollmentDialog/);
+  assert.match(appSource, /<VoiceEnrollmentDialog/);
+  assert.match(appSource, /await enrollVoice\(file\)/);
+  assert.match(appSource, /await recording\.reload\(\)/);
   assert.doesNotMatch(appSource, /requireVoiceEnrollment|VOICE_ENROLLMENT_REQUIRED_MESSAGE/);
   assert.match(appSource, /joinRoomByAccessCode\(accessCode\)/);
   assert.match(appSource, /clearAccessCodeFromLocation\(\)/);
