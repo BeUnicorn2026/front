@@ -174,12 +174,13 @@ export function applyManualSpeakerCorrections(finalSegments, liveSegments, corre
 
 export function servicesAfterLiveEvent(services, event) {
   if (event.type === "preparing") return { ...services, speakerModelState: "loading" };
-  if (event.type === "ready" && event.mode === "speaker") return { ...services, speakerModelState: "ready" };
+  if (event.type === "ready" && ["speaker", "self"].includes(event.mode)) return { ...services, speakerModelState: "ready" };
   return services;
 }
 
 export function liveRecordingStatusAfterEvent(event, mode = "stt") {
   if (event?.type === "ready") {
+    if (event.mode === "self") return "녹음 중 · 내 목소리만 기록 중";
     return event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨";
   }
   if (event?.type === "preparing") return event.message || "화자 인식 모델 준비 중";
@@ -499,6 +500,10 @@ export function useRecording() {
 
   const handleSocketEvent = useCallback((event) => {
     setServices((current) => servicesAfterLiveEvent(current, event));
+    if (event.type === "ready" && event.mode === "self") {
+      modeRef.current = "self";
+      setMode("self");
+    }
     if (event.type === "room-closed" || event.code === "ROOM_CLOSED") {
       setRoomClosed(true);
       setNotice(event.message || "회의가 종료되었습니다. 현재까지의 기록은 보존됩니다.");
@@ -562,11 +567,11 @@ export function useRecording() {
     socketDisconnectedRef.current = false;
     let ready = false;
     let terminalMessage = "";
-    const maximumWait = modeRef.current === "speaker" ? 120_000 : 15_000;
+    const maximumWait = ["speaker", "self"].includes(modeRef.current) ? 120_000 : 15_000;
     const timeout = window.setTimeout(() => {
       if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "connection timeout");
       if (socketRef.current === socket) socketRef.current = null;
-      reject(new Error(modeRef.current === "speaker" ? "화자 인식 모델 준비 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." : "실시간 STT 연결 시간이 초과되었습니다."));
+      reject(new Error(["speaker", "self"].includes(modeRef.current) ? "화자 인식 모델 준비 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." : "실시간 STT 연결 시간이 초과되었습니다."));
     }, maximumWait);
     socket.addEventListener("message", ({ data }) => {
       let event;
@@ -764,8 +769,8 @@ export function useRecording() {
     };
     setNotice("");
     setIsBusy(true);
-    modeRef.current = "stt";
-    setMode("stt");
+    modeRef.current = roomId ? "self" : "stt";
+    setMode(modeRef.current);
     setStatus("마이크와 받아쓰기 연결 중");
     setSegments([]);
     setLiveMap(createLiveMapState());

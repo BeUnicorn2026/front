@@ -57,6 +57,9 @@ test("home and meeting room bypass navigation while supporting a staged room ent
   assert.match(dashboard, /background: "var\(--color-background-surface\)"/);
   assert.match(dashboard, /data-room-feedback=\{roomFeedbackActive \? "error" : "idle"\}/);
   assert.match(dashboard, /error\.code === "ROOM_NOT_FOUND"/);
+  assert.match(dashboard, /"VOICE_PROFILE_MISSING", "VOICE_PROFILE_INVALID"/);
+  assert.match(dashboard, /label="내 목소리 등록"/);
+  assert.match(dashboard, /onNavigate\("settings"\)/);
   assert.match(dashboard, /roomFeedbackActive \? "var\(--color-error-muted\)"/);
   assert.doesNotMatch(dashboard, /Voice Partition 홈 헤더/);
 });

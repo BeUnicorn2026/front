@@ -2595,6 +2595,7 @@ function DashboardPage({
   const [dockUp, setDockUp] = useState(false);
   const [code, setCode] = useState(() => normalizeRoomCode(initialRoomCode));
   const [roomError, setRoomError] = useState("");
+  const [roomErrorCode, setRoomErrorCode] = useState("");
   const [roomFeedbackActive, setRoomFeedbackActive] = useState(false);
   const [profileName, setProfileName] = useState(() => context.user.name || "");
   const [profileIntroduction, setProfileIntroduction] = useState(() => context.user.introduction || "");
@@ -2656,6 +2657,7 @@ function DashboardPage({
       if (!character) return;
       event.preventDefault();
       setRoomError("");
+      setRoomErrorCode("");
       setCode((current) => updateRoomCode(current, `${current}${character}`));
       codeInputRef.current?.focus();
     };
@@ -2666,10 +2668,12 @@ function DashboardPage({
   const submitRoom = async () => {
     if (!ready) return;
     setRoomError("");
+    setRoomErrorCode("");
     try {
       await onStart(code);
     } catch (error) {
       setRoomError(error.message || "회의실에 입장하지 못했습니다. 다시 시도해 주세요.");
+      setRoomErrorCode(error.code || "");
       if (error.code === "ROOM_NOT_FOUND") {
         setRoomFeedbackActive(false);
         window.cancelAnimationFrame(roomFeedbackFrameRef.current);
@@ -2920,7 +2924,7 @@ function DashboardPage({
                   autoComplete="off"
                   inputMode="text"
                   value={code}
-                  onChange={(event) => { setRoomError(""); setCode(updateRoomCode(code, event.target.value)); }}
+                  onChange={(event) => { setRoomError(""); setRoomErrorCode(""); setCode(updateRoomCode(code, event.target.value)); }}
                   onKeyDown={handleCodeKey}
                   onFocus={() => { window.clearTimeout(dockCollapseTimerRef.current); setDockUp(true); }}
                   onBlur={scheduleDockCollapse}
@@ -2957,7 +2961,19 @@ function DashboardPage({
                   })}
                 </Stack>
               </Stack>
-              {roomError && <Text id="room-code-error" type="supporting" color="red">{roomError}</Text>}
+              {roomError && (
+                <Stack direction="horizontal" gap={2} align="center" justify="between">
+                  <Text id="room-code-error" type="supporting" color="red">{roomError}</Text>
+                  {["VOICE_PROFILE_MISSING", "VOICE_PROFILE_INVALID"].includes(roomErrorCode) && (
+                    <Button
+                      label="내 목소리 등록"
+                      variant="secondary"
+                      size="sm"
+                      onClick={(event) => { event.stopPropagation(); onNavigate("settings"); }}
+                    />
+                  )}
+                </Stack>
+              )}
             </Stack>
           </Card>
         </LayoutContent>

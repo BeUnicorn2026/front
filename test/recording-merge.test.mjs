@@ -132,11 +132,13 @@ test("tracks speaker model preparation and readiness from live events", () => {
 
   const ready = servicesAfterLiveEvent(loading, { type: "ready", mode: "speaker" });
   assert.equal(ready.speakerModelState, "ready");
+  assert.equal(servicesAfterLiveEvent(loading, { type: "ready", mode: "self" }).speakerModelState, "ready");
   assert.strictEqual(servicesAfterLiveEvent(ready, { type: "transcript" }), ready);
 });
 
 test("turns provider voice activity into clear live recording states", () => {
   assert.equal(liveRecordingStatusAfterEvent({ type: "ready", mode: "speaker" }), "녹음 중 · 화자 식별 연결됨");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "ready", mode: "self" }), "녹음 중 · 내 목소리만 기록 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "speaker"), "말하는 중 · 화자와 문장 분석 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "stt"), "말하는 중 · 실시간 문장 분석 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "utterance_end" }), "듣는 중 · 다음 발화 대기");
