@@ -18,6 +18,8 @@ The meeting room switches the single desktop window to a narrow portrait layout 
 
 When the backend enables Live Map, the meeting structure panel consumes `livemap-delta` and `livemap-state` messages from the existing live WebSocket and updates the dialogue tree in real time. No frontend environment variable is required; when Live Map is disabled or unavailable, live captions continue normally and the panel simply receives no live structure updates.
 
+When the backend reports `personalizedTranscript: "openai"`, finalized captions are automatically requested in batches and shown at the level of the signed-in user's server-stored introduction. The personalized sentence is primary and the verified transcript remains visible as the original. Interim captions are never sent for translation.
+
 To use another backend:
 
 ```bash

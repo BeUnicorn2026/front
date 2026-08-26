@@ -86,3 +86,53 @@ test("room closure is presented as terminal room state rather than a generic int
   assert.match(recordingSource, /회의 생성자가 회의를 종료했습니다/);
   assert.match(appSource, /isDisabled=\{recording\.roomClosed\}/);
 });
+
+test("active meeting generates intelligence once when finalized segments exist, including while recording", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  assert.match(meetingPage, /const hasFinalizedTranscript = finalizedSegmentCount > 0/);
+  assert.match(meetingPage, /const canGenerate = !readOnly && !recording\.isBusy/);
+  assert.doesNotMatch(meetingPage, /const canGenerate = [^;]*recording\.isRecording/);
+  assert.match(meetingPage, /intelligenceRequestRef\.current\.has\(meetingId\)/);
+  assert.match(meetingPage, /await postJson\(`\/api\/meetings\/\$\{meetingId\}\/intelligence`, \{ force: false \}\)/);
+  assert.doesNotMatch(meetingPage, /force: true/);
+});
+
+test("automatic and manual intelligence generation share synchronous in-flight deduplication", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  const automaticGeneration = sourceBetween(meetingPage, "const loadOrGenerateIntelligence = async", "void loadOrGenerateIntelligence");
+  const manualGeneration = sourceBetween(meetingPage, "const analyzeMeeting = async", "const copyText");
+
+  assert.match(meetingPage, /const intelligenceInFlightRef = useRef\(new Set\(\)\)/);
+  assert.match(automaticGeneration, /intelligenceInFlightRef\.current\.has\(meetingId\)/);
+  assert.match(automaticGeneration, /intelligenceInFlightRef\.current\.add\(meetingId\)/);
+  assert.match(automaticGeneration, /setIntelligenceBusy\(true\)/);
+  assert.match(automaticGeneration, /intelligenceInFlightRef\.current\.delete\(meetingId\)/);
+  assert.match(manualGeneration, /intelligenceInFlightRef\.current\.has\(meetingId\)/);
+  assert.match(manualGeneration, /intelligenceInFlightRef\.current\.add\(meetingId\)/);
+  assert.match(manualGeneration, /intelligenceInFlightRef\.current\.delete\(meetingId\)/);
+});
+
+test("manual intelligence action remains available while recording and disabled while busy", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  const analyzeMeeting = sourceBetween(meetingPage, "const analyzeMeeting = async", "const copyText");
+
+  assert.match(meetingPage, /label=\{intelligence \? "다시 분석" : "AI로 정리"\}/);
+  assert.match(meetingPage, /isDisabled=\{recording\.isBusy \|\| intelligenceBusy\}/);
+  assert.match(analyzeMeeting, /if \(readOnly \|\| recording\.isBusy \|\| intelligenceInFlightRef\.current\.has\(meetingId\) \|\| !meetingId \|\| !hasFinalizedTranscript\) return/);
+  assert.doesNotMatch(analyzeMeeting, /recording\.isRecording/);
+});
+
+test("room intelligence refreshes persisted segments before generation", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  const refresh = sourceBetween(recordingSource, "const refreshActiveMeeting", "const resetMeeting");
+  assert.match(meetingPage, /room\?\.id && recording\.refreshActiveMeeting/);
+  assert.match(meetingPage, /await recording\.refreshActiveMeeting\(\)/);
+  assert.match(refresh, /apiRequest\(`\/api\/meetings\/\$\{encodeURIComponent\(meetingId\)\}`\)/);
+  assert.match(refresh, /activeMeetingRef\.current\?\.id !== meetingId/);
+});
+
+test("read-only meetings only load cached intelligence and never generate it", () => {
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+  assert.match(meetingPage, /apiRequest\(`\/api\/meetings\/\$\{meetingId\}\/intelligence`\)/);
+  assert.match(meetingPage, /const canGenerate = !readOnly/);
+});

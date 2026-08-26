@@ -17,7 +17,8 @@ test("home keeps one expanding profile, dense meeting rows, and a compact room-c
 
   assert.match(dashboard, /data-home-dock/);
   assert.match(dashboard, /const \[code, setCode\] = useState\(\(\) => normalizeRoomCode\(initialRoomCode\)\)/);
-  assert.match(dashboard, /aria-label="4자리 방 코드"/);
+  assert.match(dashboard, /aria-label="ROOM 또는 4자리 숫자 방 번호"/);
+  assert.match(dashboard, /ROOM으로 생성 · 숫자로 입장/);
   assert.match(dashboard, /Array\.from\(\{ length: 4 \}/);
   assert.match(dashboard, /event\.clientY > bounds\.top \+ bounds\.height \* 0\.82/);
   assert.match(dashboard, /roomCodeKeyAction\(code, event\)/);

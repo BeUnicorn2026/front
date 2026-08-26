@@ -1,4 +1,5 @@
 export const ROOM_CODE_LENGTH = 4;
+export const ROOM_CREATE_COMMAND = "ROOM";
 
 export function normalizeRoomCode(value) {
   return String(value ?? "")
@@ -10,6 +11,13 @@ export function normalizeRoomCode(value) {
 
 export function updateRoomCode(_currentCode, nextValue) {
   return normalizeRoomCode(nextValue);
+}
+
+export function roomEntryAction(value) {
+  const code = normalizeRoomCode(value);
+  if (code === ROOM_CREATE_COMMAND) return { type: "create", code };
+  if (/^\d{4}$/.test(code)) return { type: "join", code };
+  return { type: "invalid", code };
 }
 
 export function roomCodeKeyAction(code, event) {
@@ -24,7 +32,7 @@ export function roomCodeKeyAction(code, event) {
     return {
       code: currentCode,
       handled: true,
-      submit: currentCode.length === ROOM_CODE_LENGTH && !event.repeat
+      submit: roomEntryAction(currentCode).type !== "invalid" && !event.repeat
     };
   }
   return { code: currentCode, handled: false, submit: false };

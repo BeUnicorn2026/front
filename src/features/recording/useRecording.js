@@ -1037,6 +1037,24 @@ export function useRecording() {
     return true;
   }, []);
 
+  const refreshActiveMeeting = useCallback(async () => {
+    const meetingId = activeMeetingRef.current?.id;
+    if (!meetingId) return null;
+    const result = await apiRequest(`/api/meetings/${encodeURIComponent(meetingId)}`);
+    if (activeMeetingRef.current?.id !== meetingId) return null;
+    const hydrated = roomMeetingHydration(result.meeting);
+    if (!hydrated) return null;
+    activeMeetingRef.current = hydrated.meeting;
+    setActiveMeeting(hydrated.meeting);
+    committedRef.current = hydrated.segments;
+    setSegments(hydrated.segments);
+    elapsedRef.current = hydrated.duration;
+    setElapsed(hydrated.duration);
+    setHasResult(Boolean(hydrated.segments.length));
+    upsertMeeting(hydrated.meeting);
+    return hydrated.meeting;
+  }, [upsertMeeting]);
+
   const resetMeeting = useCallback(() => {
     modeRef.current = "stt";
     setMode("stt");
@@ -1104,7 +1122,7 @@ export function useRecording() {
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, liveMap, speakers, services, meetings, activeMeeting, roomClosed,
     audioInputs, selectedAudioInputId, setSelectedAudioInputId,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, bindRoomMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
+    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, bindRoomMeeting, refreshActiveMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }

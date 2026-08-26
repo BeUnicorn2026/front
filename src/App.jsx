@@ -41,11 +41,12 @@ import {
 } from "./data/intelligence";
 import { MEETING_VIEW_OPTIONS, TRANSCRIPTION_LANGUAGE_OPTIONS } from "./data/meeting-view-options";
 import { toRendererResult } from "./features/meeting/liveMapState";
-import { isEditableTarget, normalizeRoomCode, printableRoomCharacter, roomCodeKeyAction, updateRoomCode } from "./features/meeting/roomInput";
+import { isEditableTarget, normalizeRoomCode, printableRoomCharacter, roomCodeKeyAction, roomEntryAction, updateRoomCode } from "./features/meeting/roomInput";
 import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 import { BillingPage } from "./features/billing/BillingPage";
 import { useMeetMap } from "./features/meeting/useMeetMap";
+import { segmentTranslationSequence, usePersonalizedTranscript } from "./features/meeting/usePersonalizedTranscript";
 import {
   accessCodeFromLocation,
   clearAccessCodeFromLocation,
@@ -302,7 +303,7 @@ function AuthScreen({ onAuthenticated }) {
               </Stack>
             ) : (
               <Stack direction="horizontal" width="100%" maxWidth={400} justify="end">
-                <Text type="supporting" color="secondary">보안이 적용된 조직 워크스페이스</Text>
+                <Text type="supporting" color="secondary">이메일로 안전하게 이어지는 회의 기록</Text>
               </Stack>
             )}
             <Stack as="form" onSubmit={submit} gap={6} width="100%" maxWidth={400}>
@@ -311,7 +312,7 @@ function AuthScreen({ onAuthenticated }) {
                 <Text color="secondary" as="p">
                   {verification
                     ? `${verification.email}로 보낸 6자리 코드를 입력하세요. 코드는 10분 동안 유효합니다.`
-                    : mode === "login" ? "회사 이메일로 로그인해 이어서 기록하세요." : "계정을 만든 뒤 조직과 개인 용어 지식을 설정합니다."}
+                    : mode === "login" ? "이메일로 로그인해 이어서 기록하세요." : "이메일 계정을 만들고 바로 회의를 시작하세요."}
                 </Text>
               </Stack>
               <Feedback message={error} onDismiss={() => setError("")} />
@@ -338,7 +339,7 @@ function AuthScreen({ onAuthenticated }) {
                         <TextArea label="자기소개" value={form.introduction} onChange={(introduction) => setForm({ ...form, introduction })} maxLength={500} isRequired width="100%" />
                       </>
                     )}
-                    <TextInput type="email" label="회사 이메일" value={form.email} onChange={(email) => setForm({ ...form, email })} isRequired width="100%" />
+                    <TextInput type="email" label="이메일" value={form.email} onChange={(email) => setForm({ ...form, email })} isRequired width="100%" />
                     <TextInput type="password" label="비밀번호" value={form.password} onChange={(password) => setForm({ ...form, password })} description="8자 이상 입력해 주세요." isRequired width="100%" />
                   </FormLayout>
                   <Button type="submit" variant="primary" size="lg" width="100%" label={mode === "login" ? "로그인" : "계정 만들기"} isLoading={busy} />
@@ -356,76 +357,6 @@ function AuthScreen({ onAuthenticated }) {
             </Text>
           </Stack>
         </Section>
-      </Stack>
-    </AppShell>
-  );
-}
-
-function OrganizationSetup({ context, onChange }) {
-  const { compact } = useViewport();
-  const [mode, setMode] = useState("create");
-  const [name, setName] = useState("");
-  const [domain, setDomain] = useState(context.user.email.split("@")[1] || "");
-  const [inviteCode, setInviteCode] = useState("");
-  const [suggestion, setSuggestion] = useState(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    apiRequest("/api/organizations/suggestion").then(({ suggestion: next }) => setSuggestion(next)).catch(() => undefined);
-  }, []);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      const next = mode === "create"
-        ? await postJson("/api/organizations", { name, domain })
-        : await postJson("/api/organizations/join", { inviteCode });
-      onChange(next);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <AppShell variant="surface" height="auto" contentPadding={compact ? 3 : 6}>
-      <Stack align="center" paddingBlock={compact ? 3 : 8}>
-        <Stack width="100%" maxWidth={680} gap={6}>
-          <BrandStory compact />
-          <Card padding={compact ? 4 : 6}>
-            <Stack as="form" onSubmit={submit} gap={5}>
-              <Stack gap={1}>
-                <Text type="label" color="accent" weight="semibold">2 / 3 단계</Text>
-                <Heading level={2}>회사를 연결하세요</Heading>
-                <Text color="secondary" as="p">회사마다 회의, 구성원, 등록 목소리와 공용 용어 사전이 분리됩니다.</Text>
-              </Stack>
-              <SegmentedControl value={mode} onChange={setMode} label="조직 설정 방법" layout="fill">
-                <SegmentedControlItem value="create" label="새 조직 만들기" />
-                <SegmentedControlItem value="join" label="초대 코드로 가입" />
-              </SegmentedControl>
-              {suggestion?.name && (
-                <Banner status="info" title={`${suggestion.name} 조직이 발견됐습니다.`} description="보안을 위해 관리자에게 초대 코드를 요청해 가입하세요." />
-              )}
-              {!suggestion?.name && suggestion?.domain && (
-                <Banner status="info" title={`${suggestion.domain} 도메인`} description="등록된 조직이 없어 새 조직을 만들 수 있습니다." />
-              )}
-              <Feedback message={error} onDismiss={() => setError("")} />
-              {mode === "create" ? (
-                <FormLayout defaultOptionality="required">
-                  <TextInput label="회사 또는 팀 이름" value={name} onChange={setName} placeholder="예: Acme Product" isRequired width="100%" />
-                  <TextInput label="회사 도메인" value={domain} onChange={setDomain} description="도메인은 한 조직에서만 사용할 수 있습니다." isRequired width="100%" />
-                </FormLayout>
-              ) : (
-                <TextInput label="8자리 초대 코드" value={inviteCode} onChange={setInviteCode} placeholder="예: A1B2C3D4" isRequired width="100%" />
-              )}
-              <Button type="submit" variant="primary" size="lg" width="100%" label={mode === "create" ? "조직 만들기" : "조직에 가입하기"} isLoading={busy} />
-            </Stack>
-          </Card>
-        </Stack>
       </Stack>
     </AppShell>
   );
@@ -528,6 +459,71 @@ function PageHeader({ title, description, endContent }) {
       />
     </LayoutHeader>
   );
+}
+
+// Split a sentence into plain-text runs and clickable spans for the given terms.
+// Scans left to right, matching the longest term at the earliest position so an
+// unfamiliar term embedded in the sentence becomes a single clickable target that
+// asks the backend to rewrite that sentence with an easier expression in place.
+function clickableSentenceNodes(text, terms, { onPick, disabled, busyTerm }) {
+  const source = String(text || "");
+  if (!terms.length || !source) return [source];
+  const lower = source.toLocaleLowerCase();
+  const nodes = [];
+  let cursor = 0;
+  let key = 0;
+  while (cursor < source.length) {
+    let best = null;
+    for (const term of terms) {
+      const needle = String(term.term || "").toLocaleLowerCase();
+      if (!needle) continue;
+      const at = lower.indexOf(needle, cursor);
+      if (at === -1) continue;
+      if (!best || at < best.at || (at === best.at && needle.length > best.length)) {
+        best = { at, length: needle.length, term };
+      }
+    }
+    if (!best) { nodes.push(source.slice(cursor)); break; }
+    if (best.at > cursor) nodes.push(source.slice(cursor, best.at));
+    const label = source.slice(best.at, best.at + best.length);
+    const isBusy = Boolean(busyTerm) && busyTerm === best.term.term;
+    const isInactive = disabled || isBusy;
+    nodes.push(
+      <span
+        key={`w-${key++}`}
+        role="button"
+        tabIndex={isInactive ? -1 : 0}
+        aria-label={`${label} 쉬운 표현으로 바꾸기`}
+        aria-disabled={isInactive ? "true" : undefined}
+        onClick={() => { if (!isInactive) onPick(best.term); }}
+        onKeyDown={(event) => {
+          if (isInactive) return;
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onPick(best.term); }
+        }}
+        style={{
+          cursor: disabled ? "default" : "pointer",
+          color: "var(--color-text-accent)",
+          textDecoration: "underline",
+          textDecorationStyle: "dotted",
+          textUnderlineOffset: "3px",
+          fontWeight: 600,
+          opacity: isBusy ? 0.55 : 1
+        }}
+      >{label}</span>
+    );
+    cursor = best.at + best.length;
+  }
+  return nodes;
+}
+
+function replaceExactSentence(text, originalSentence, rewrittenSentence) {
+  const source = String(text || "");
+  const original = String(originalSentence || "");
+  const rewritten = String(rewrittenSentence || "");
+  if (!source || !original || !rewritten) return null;
+  const sentenceStart = source.indexOf(original);
+  if (sentenceStart === -1) return null;
+  return `${source.slice(0, sentenceStart)}${rewritten}${source.slice(sentenceStart + original.length)}`;
 }
 
 function TranscriptList({ segments, speakers = [], onCorrectSpeaker, onCorrectText, compact = false, mode = "speaker", termCatalog = [] }) {
@@ -1433,7 +1429,10 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
   );
 }
 
-function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly = false }) {
+function LiveTranscriptFeed({
+  segments, isRecording, reducedMotion, isReadOnly = false, analyzedTerms = [], rewrites = {},
+  personalizations = {}, personalizationEnabled = false, onRewriteWord, onRevertRewrite, busyTerm = ""
+}) {
   const viewportRef = useRef(null);
   const followsLatestRef = useRef(true);
   const latestSegment = segments.at(-1);
@@ -1466,29 +1465,79 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
         header={(
           <Stack padding={4} style={{ borderBottom: "var(--border-width) solid var(--color-border)" }}>
             <Stack direction="horizontal" justify="between" align="center" gap={3}>
-              <Heading level={2}>대화 내용</Heading>
+              <Stack gap={0.5}>
+                <Heading level={2}>대화 내용</Heading>
+                <Text type="supporting" color="secondary">
+                  {personalizationEnabled ? "내 자기소개에 맞춰 실시간으로 풀어씁니다." : "말한 내용을 그대로 기록합니다."}
+                </Text>
+              </Stack>
               <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>{segments.length}개 발화</Text>
             </Stack>
           </Stack>
         )}
       >
-        {segments.length ? segments.map((segment, index) => (
-          <ListItem
-            key={segment.id || `${segment.start}-${index}`}
-            label={(
-              <Stack direction="horizontal" align="center" gap={2}>
-                <Text weight="semibold">{segment.speaker || "화자"}</Text>
-                {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
-              </Stack>
-            )}
-            description={(
-              <Text as="p" type="large" color={segment.pending ? "secondary" : "primary"} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
-                {segment.text}
-              </Text>
-            )}
-            endContent={<Text type="code" color="secondary">{formatTime(segment.start)}</Text>}
-          />
-        )) : (
+        {segments.length ? segments.map((segment, index) => {
+          const rewrite = rewrites[index];
+          const personalization = personalizations[segmentTranslationSequence(segment, index)];
+          const personalized = personalization?.status === "ready"
+            && personalization.changed
+            && personalization.personalizedText;
+          const clickableTerms = !isReadOnly && !segment.pending && onRewriteWord
+            ? matchingTerms(segment.text, analyzedTerms).filter((term) => !term.isKnown)
+            : [];
+          return (
+            <ListItem
+              key={segment.id || `${segment.start}-${index}`}
+              label={(
+                <Stack direction="horizontal" align="center" gap={2}>
+                  <Text weight="semibold">{segment.speaker || "화자"}</Text>
+                  {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
+                </Stack>
+              )}
+              description={personalized ? (
+                <Stack gap={2}>
+                  <Stack direction="horizontal" gap={1} align="center">
+                    <Token label="내 자기소개 반영" color="teal" size="sm" />
+                  </Stack>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {personalization.personalizedText}
+                  </Text>
+                  <Text as="p" type="supporting" color="secondary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    원문 · {segment.text}
+                  </Text>
+                </Stack>
+              ) : personalization?.status === "loading" ? (
+                <Stack gap={1}>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {segment.text}
+                  </Text>
+                  <StatusDot variant="accent" label="내 자기소개에 맞게 바꾸는 중" isPulsing />
+                </Stack>
+              ) : rewrite ? (
+                <Stack gap={2}>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {rewrite.rewritten}
+                  </Text>
+                  <Text as="p" type="supporting" color="secondary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    원래 문장 · {rewrite.original}
+                  </Text>
+                  {onRevertRewrite && <Button label="원래 문장 보기" variant="ghost" size="sm" onClick={() => onRevertRewrite(index)} />}
+                </Stack>
+              ) : (
+                <Text as="p" type="large" color={segment.pending ? "secondary" : "primary"} style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                  {clickableTerms.length
+                    ? clickableSentenceNodes(segment.text, clickableTerms, {
+                        onPick: (term) => onRewriteWord(segment, index, term),
+                        disabled: Boolean(busyTerm),
+                        busyTerm
+                      })
+                    : segment.text}
+                </Text>
+              )}
+              endContent={<Text type="code" color="secondary">{formatTime(segment.start)}</Text>}
+            />
+          );
+        }) : (
           <ListItem
             label={isRecording ? "말씀해 주세요" : isReadOnly ? "저장된 문장이 없습니다" : "아직 기록된 문장이 없습니다"}
             description={isRecording ? "듣고 있는 문장이 이곳에서 계속 업데이트됩니다." : isReadOnly ? "이 회의 기록에는 저장된 대화가 없습니다." : "오른쪽 위 마이크 버튼을 누르면 실시간 받아쓰기가 시작됩니다."}
@@ -1608,13 +1657,24 @@ function LiveStructurePanel({ segments, isRecording, isReadOnly = false, meetMap
   );
 }
 
-function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, user, readOnly = false }) {
+function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, user, onVocabularyRefresh, readOnly = false }) {
   const { compact, desktop, reducedMotion } = useViewport();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [participantOpen, setParticipantOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
+  const [intelligence, setIntelligence] = useState(null);
+  const [intelligenceBusy, setIntelligenceBusy] = useState(false);
+  const [sentenceRewrites, setSentenceRewrites] = useState({});
+  const [rewriteBusyTerm, setRewriteBusyTerm] = useState("");
   const automaticRecordingAttemptRef = useRef(false);
+  const intelligenceRequestRef = useRef(new Set());
+  const intelligenceInFlightRef = useRef(new Set());
   const displayedSegments = recording.segments;
+  const meetingId = recording.activeMeeting?.id;
+  const finalizedSegmentCount = displayedSegments.filter(({ pending }) => !pending).length;
+  const hasFinalizedTranscript = finalizedSegmentCount > 0;
+  const meetingIdRef = useRef(meetingId);
+  meetingIdRef.current = meetingId;
   const meetMap = useMeetMap(displayedSegments, recording.activeMeeting?.id, readOnly);
   const meetingLimitReached = billing?.usage?.meetings?.allowed === false;
   const roomCode = meetingRoomCode(room);
@@ -1637,6 +1697,131 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const microphoneLabel = selectedMicrophone?.label || "시스템 기본 마이크";
   const meetingControlHeight = "calc(var(--spacing-10) + var(--spacing-8))";
   const participantRestHeight = "calc(var(--spacing-10) + var(--spacing-6))";
+  const analyzedTerms = Array.isArray(intelligence?.terms) ? intelligence.terms : [];
+  const personalizationEnabled = recording.services.personalizedTranscript === "openai";
+  const personalizedTranscripts = usePersonalizedTranscript({
+    meetingId,
+    segments: displayedSegments,
+    introduction: user?.introduction || "",
+    enabled: personalizationEnabled
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setIntelligence(null);
+    setSentenceRewrites({});
+    setRewriteBusyTerm("");
+    if (!meetingId || !hasFinalizedTranscript) return () => { cancelled = true; };
+
+    const loadOrGenerateIntelligence = async () => {
+      try {
+        const { intelligence: cached } = await apiRequest(`/api/meetings/${meetingId}/intelligence`);
+        if (cancelled || meetingIdRef.current !== meetingId) return;
+        if (cached) {
+          setIntelligence(cached);
+          return;
+        }
+        const canGenerate = !readOnly && !recording.isBusy;
+        if (!canGenerate || intelligenceRequestRef.current.has(meetingId) || intelligenceInFlightRef.current.has(meetingId)) return;
+        intelligenceRequestRef.current.add(meetingId);
+        intelligenceInFlightRef.current.add(meetingId);
+        setIntelligenceBusy(true);
+        try {
+          const persistedMeeting = room?.id && recording.refreshActiveMeeting
+            ? await recording.refreshActiveMeeting()
+            : recording.activeMeeting;
+          if (cancelled || meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
+          if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
+          const result = await postJson(`/api/meetings/${meetingId}/intelligence`, { force: false });
+          if (cancelled || meetingIdRef.current !== meetingId) return;
+          setIntelligence(result.intelligence || null);
+          if (result.meeting) recording.updateMeeting(result.meeting);
+          if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+        } finally {
+          intelligenceInFlightRef.current.delete(meetingId);
+          if (meetingIdRef.current === meetingId) setIntelligenceBusy(false);
+        }
+      } catch {
+        // Keep the live transcript usable when cached or generated intelligence is unavailable.
+      }
+    };
+
+    void loadOrGenerateIntelligence();
+    return () => { cancelled = true; };
+  }, [hasFinalizedTranscript, meetingId, onVocabularyRefresh, readOnly, recording.activeMeeting?.updatedAt, recording.isBusy, recording.isRecording, recording.refreshActiveMeeting, recording.updateMeeting, room?.id]);
+
+  const rewriteWordInSentence = async (segment, segmentIndex, term) => {
+    if (readOnly || !meetingId || !intelligence || segment?.pending || rewriteBusyTerm) return;
+    const canonicalTerm = String(term?.term || "").trim();
+    if (!canonicalTerm || !Number.isInteger(segmentIndex) || !displayedSegments[segmentIndex]) return;
+    setRewriteBusyTerm(canonicalTerm);
+    try {
+      await postJson("/api/knowledge/evidence", {
+        term: canonicalTerm,
+        kind: "request_simpler",
+        eventId: crypto.randomUUID(),
+        meetingId,
+        segmentIndex
+      });
+      const { explanation } = await postJson("/api/knowledge/explanations", {
+        term: canonicalTerm,
+        meetingId,
+        segmentIndex,
+        level: "simple"
+      });
+      const originalSentence = String(explanation?.originalSentence || "").trim();
+      const rewrittenSentence = String(explanation?.rewrittenContext || "").trim();
+      const rewrittenSegment = replaceExactSentence(segment.text, originalSentence, rewrittenSentence);
+      if (rewrittenSegment && meetingIdRef.current === meetingId) {
+        setSentenceRewrites((current) => ({
+          ...current,
+          [segmentIndex]: {
+            original: originalSentence,
+            rewritten: rewrittenSegment
+          }
+        }));
+      }
+      if (meetingIdRef.current === meetingId && onVocabularyRefresh) await onVocabularyRefresh();
+    } catch {
+      // Keep the original transcript visible when analysis data is stale or unavailable.
+    } finally {
+      if (meetingIdRef.current === meetingId) setRewriteBusyTerm("");
+    }
+  };
+
+  const revertSentenceRewrite = (segmentIndex) => {
+    setSentenceRewrites((current) => {
+      if (!(segmentIndex in current)) return current;
+      const next = { ...current };
+      delete next[segmentIndex];
+      return next;
+    });
+  };
+
+  const analyzeMeeting = async () => {
+    if (readOnly || recording.isBusy || intelligenceInFlightRef.current.has(meetingId) || !meetingId || !hasFinalizedTranscript) return;
+    intelligenceInFlightRef.current.add(meetingId);
+    setIntelligenceBusy(true);
+    try {
+      const persistedMeeting = room?.id && recording.refreshActiveMeeting
+        ? await recording.refreshActiveMeeting()
+        : recording.activeMeeting;
+      if (meetingIdRef.current !== meetingId || persistedMeeting?.id !== meetingId) return;
+      if (!Array.isArray(persistedMeeting.segments) || !persistedMeeting.segments.length) return;
+      const result = await postJson(`/api/meetings/${meetingId}/intelligence`, {
+        force: Boolean(intelligence)
+      });
+      if (meetingIdRef.current !== meetingId) return;
+      setIntelligence(result.intelligence || null);
+      if (result.meeting) recording.updateMeeting(result.meeting);
+      if (result.intelligence && onVocabularyRefresh) await onVocabularyRefresh();
+    } catch {
+      // Keep the live transcript usable when manual intelligence generation is unavailable.
+    } finally {
+      intelligenceInFlightRef.current.delete(meetingId);
+      if (meetingIdRef.current === meetingId) setIntelligenceBusy(false);
+    }
+  };
 
   const copyText = async (value, successMessage) => {
     try {
@@ -1797,6 +1982,16 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
               )}
               endContent={!desktop && !readOnly ? (
                 <Stack direction="horizontal" gap={2}>
+                  {hasFinalizedTranscript && (
+                    <IconButton
+                      label={intelligence ? "다시 분석" : "AI로 정리"}
+                      icon={<Icon icon="wrench" />}
+                      variant="secondary"
+                      onClick={analyzeMeeting}
+                      isDisabled={recording.isBusy || intelligenceBusy}
+                      isLoading={intelligenceBusy}
+                    />
+                  )}
                   {isRoomCreator && !recording.roomClosed && (
                     <IconButton label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
                   )}
@@ -1824,7 +2019,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                   <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} liveMap={recording.liveMap} />
                 </Stack>
                 <Stack width="100%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}>
-                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
+                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} personalizations={personalizedTranscripts} personalizationEnabled={personalizationEnabled} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
                 </Stack>
               </Stack>
             ) : (
@@ -1834,7 +2029,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                     <Text type="supporting" color="secondary">{recording.notice}</Text>
                   </Section>
                 )}
-                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} />
+                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} personalizations={personalizedTranscripts} personalizationEnabled={personalizationEnabled} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
               </Stack>
             )}
           </LayoutContent>
@@ -1855,6 +2050,16 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                 startContent={(
                   <Stack direction="horizontal" gap={2}>
                     <Button label={readOnly ? "기록 닫기" : "회의 나가기"} icon={<Icon icon="chevronLeft" />} variant="ghost" onClick={onLeave} style={{ color: "var(--color-text-red)" }} />
+                    {!readOnly && hasFinalizedTranscript && (
+                      <Button
+                        label={intelligence ? "다시 분석" : "AI로 정리"}
+                        icon={<Icon icon="wrench" />}
+                        variant="secondary"
+                        onClick={analyzeMeeting}
+                        isDisabled={recording.isBusy || intelligenceBusy}
+                        isLoading={intelligenceBusy}
+                      />
+                    )}
                     {!readOnly && isRoomCreator && !recording.roomClosed && (
                       <Button label="회의 종료" icon={<Icon icon="stop" />} variant="destructive" onClick={onEnd} />
                     )}
@@ -2293,6 +2498,7 @@ function DashboardPage({
   const [dockUp, setDockUp] = useState(false);
   const [code, setCode] = useState(() => normalizeRoomCode(initialRoomCode));
   const [roomError, setRoomError] = useState("");
+  const [profileName, setProfileName] = useState(() => context.user.name || "");
   const [profileIntroduction, setProfileIntroduction] = useState(() => context.user.introduction || "");
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -2302,7 +2508,7 @@ function DashboardPage({
   const recentMeetings = recording.meetings.slice(0, 8);
   const roles = context.user.vocabulary?.roles || [];
   const knownTerms = context.user.vocabulary?.knownTerms || [];
-  const ready = code.length === 4;
+  const ready = roomEntryAction(code).type !== "invalid";
   const transition = reducedMotion ? "none" : "all var(--duration-slow) var(--motion-navigation-ease)";
 
   const raiseDock = useCallback(() => {
@@ -2351,11 +2557,11 @@ function DashboardPage({
       if (document.activeElement !== codeInputRef.current) setDockUp(false);
     }, 360);
   };
-  const saveIntroduction = async () => {
+  const saveProfile = async () => {
     setProfileBusy(true);
     setProfileError("");
     try {
-      const nextContext = await putJson("/api/profile", { introduction: profileIntroduction });
+      const nextContext = await putJson("/api/profile", { name: profileName, introduction: profileIntroduction });
       onContextChange(nextContext);
       setProfileSaved(true);
     } catch (error) {
@@ -2378,12 +2584,12 @@ function DashboardPage({
       />
       <Feedback message={profileError} onDismiss={() => setProfileError("")} />
       <Stack direction="horizontal" justify="end">
-        <Button label={profileSaved ? "저장됨" : "자기소개 저장"} variant="primary" size="sm" onClick={saveIntroduction} isLoading={profileBusy} />
+        <Button label={profileSaved ? "저장됨" : "자기소개 저장"} variant="primary" size="sm" onClick={saveProfile} isLoading={profileBusy} />
       </Stack>
     </Stack>
   ) : accountTab === "settings" ? (
     <Stack gap={3}>
-      <TextInput label="표시 이름" value={context.user.name} onChange={() => undefined} isReadOnly width="100%" />
+      <TextInput label="표시 이름" value={profileName} onChange={(value) => { setProfileName(value); setProfileSaved(false); }} maxLength={40} width="100%" />
       <Selector
         label="입력 마이크"
         value={recording.selectedAudioInputId}
@@ -2396,13 +2602,17 @@ function DashboardPage({
         <ProgressBar label="마이크 입력 감도" value={recording.audioLevel} isLabelHidden />
         <Text type="supporting" color="secondary" maxLines={1}>{microphoneLevelPresentation(recording.audioLevel, true).label}</Text>
       </Stack>
+      <Feedback message={profileError} onDismiss={() => setProfileError("")} />
+      <Stack direction="horizontal" justify="end">
+        <Button label={profileSaved ? "저장됨" : "이름 저장"} variant="primary" size="sm" onClick={saveProfile} isLoading={profileBusy} />
+      </Stack>
     </Stack>
   ) : (
     <Stack gap={3}>
       <Section variant="muted" padding={3}>
         <Stack gap={0.5}>
           <Text weight="medium">{context.user.email}</Text>
-          <Text type="supporting" color="secondary">{context.organization.name}</Text>
+          <Text type="supporting" color="secondary">이메일 계정</Text>
         </Stack>
       </Section>
       <Stack direction={compact ? "vertical" : "horizontal"} gap={2}>
@@ -2557,13 +2767,13 @@ function DashboardPage({
             <Stack paddingInline={compact ? 3 : 4} paddingBlockStart={2} paddingBlockEnd={4} gap={3}>
               <Stack align="center" gap={2}>
                 <Stack width="var(--spacing-10)" height="var(--spacing-1)" style={{ borderRadius: "var(--radius-full)", background: "var(--color-border-emphasized)" }} />
-                <Text weight="semibold">방 코드로 입장</Text>
+                <Text weight="semibold">ROOM으로 생성 · 숫자로 입장</Text>
               </Stack>
               <Stack width="100%" style={{ position: "relative" }}>
                 <Stack
                   as="input"
                   ref={codeInputRef}
-                  aria-label="4자리 방 코드"
+                  aria-label="ROOM 또는 4자리 숫자 방 번호"
                   aria-describedby={roomError ? "room-code-error" : undefined}
                   autoCapitalize="characters"
                   autoComplete="off"
@@ -2723,7 +2933,6 @@ function DictionaryPage({ terms, onRefresh }) {
 
 function SettingsPage({ context, recording }) {
   const { compact, desktop } = useViewport();
-  const [members, setMembers] = useState([]);
   const [speakerFile, setSpeakerFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -2737,10 +2946,6 @@ function SettingsPage({ context, recording }) {
   const [independentRecording, setIndependentRecording] = useState(false);
   const [expectedSpeakerId, setExpectedSpeakerId] = useState("");
   const [identification, setIdentification] = useState(null);
-
-  useEffect(() => {
-    apiRequest("/api/organizations/current/members").then((result) => setMembers(result.members || [])).catch((error) => setFeedback(error.message));
-  }, []);
 
   const enroll = async (event) => {
     event.preventDefault();
@@ -2786,11 +2991,6 @@ function SettingsPage({ context, recording }) {
     } finally {
       setBusy(false);
     }
-  };
-
-  const copyInvite = async () => {
-    await navigator.clipboard.writeText(context.organization.inviteCode);
-    setFeedback("초대 코드를 복사했습니다.");
   };
 
   const identifySpeaker = async (event) => {
@@ -2843,26 +3043,6 @@ function SettingsPage({ context, recording }) {
             {feedback && <Feedback message={feedback} status={feedback.includes("등록했습니다") || feedback.includes("반영했습니다") || feedback.includes("복사") ? "success" : "info"} onDismiss={() => setFeedback("")} />}
             <Stack direction={desktop ? "horizontal" : "vertical"} gap={6} align="start">
               <Stack gap={6} width="100%">
-            <Section paddingInline={compact ? 3 : 0}>
-              <Stack gap={3}>
-                <Heading level={2}>조직</Heading>
-                <Section variant="muted" padding={4}>
-                  <Stack direction={compact ? "vertical" : "horizontal"} justify="between" align={compact ? "stretch" : "center"} gap={3}>
-                    <Stack gap={1}>
-                      <Text weight="semibold">{context.organization.name}</Text>
-                      <Text type="supporting">{context.organization.domain || "도메인 미설정"} · {members.length}명</Text>
-                    </Stack>
-                    <Stack direction="horizontal" gap={2} align="center">
-                      <Text type="code">{context.organization.inviteCode}</Text>
-                      <Button label="초대 코드 복사" variant="secondary" size="sm" icon={<Icon icon="copy" />} onClick={copyInvite} />
-                    </Stack>
-                  </Stack>
-                </Section>
-                <List hasDividers header={<Heading level={3}>구성원</Heading>}>
-                  {members.map((member) => <ListItem key={member.id} label={member.name} description={member.email} startContent={<Avatar name={member.name} size="sm" />} endContent={<Token label={member.role === "owner" ? "관리자" : "멤버"} color={member.role === "owner" ? "teal" : "default"} size="sm" />} />)}
-                </List>
-              </Stack>
-            </Section>
             <Section paddingInline={compact ? 3 : 0}>
               <Stack gap={4}>
                 <Stack gap={1}>
@@ -3144,9 +3324,16 @@ function Workspace({ context, onContextChange, onLogout }) {
 
   const startNewMeeting = async (nextRoomCode) => {
     const normalizedRoomCode = normalizeRoomCode(nextRoomCode);
-    if (normalizedRoomCode.length !== 4) throw new Error("4자리 방 코드를 입력해 주세요.");
-    if (!roomRequestRef.current || roomRequestRef.current.room !== normalizedRoomCode) {
-      roomRequestRef.current = { room: normalizedRoomCode, idempotencyKey: crypto.randomUUID() };
+    const action = roomEntryAction(normalizedRoomCode);
+    if (action.type === "invalid") throw new Error("새 방은 ROOM, 참여는 4자리 숫자를 입력해 주세요.");
+    if (action.type === "join") {
+      const joined = await postJson("/api/rooms/join", { room: action.code });
+      if (!joined?.room || typeof joined.room !== "object") throw new Error("회의실 응답에 방 정보가 없습니다.");
+      beginMeetingEntry(() => { setMeetingReadOnly(false); recording.resetMeeting(); }, joined.room);
+      return;
+    }
+    if (!roomRequestRef.current) {
+      roomRequestRef.current = { command: "ROOM", idempotencyKey: crypto.randomUUID() };
     }
     const result = await postJson("/api/rooms", roomRequestRef.current);
     const createdRoom = result?.room;
@@ -3222,7 +3409,7 @@ function Workspace({ context, onContextChange, onLogout }) {
             </Stack>
           )}
           heading={pageTitles[page] || "보이스 파티션"}
-          subheading={compact ? undefined : context.organization.name}
+          subheading={compact ? undefined : context.user.email}
         />
       )}
       endContent={(
@@ -3250,7 +3437,7 @@ function Workspace({ context, onContextChange, onLogout }) {
   else if (page === "dictionary") content = <DictionaryPage terms={vocabularyTerms} onRefresh={refreshVocabulary} />;
   else if (page === "billing") content = <BillingPage context={context} onBillingChange={setBilling} />;
   else if (page === "settings") content = <SettingsPage context={context} recording={recording} />;
-  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={leaveMeeting} onEnd={endMeeting} room={room} user={context.user} readOnly={meetingReadOnly} />;
+  else content = <MeetingPage recording={recording} billing={billing} onOpenBilling={() => navigateTo("billing")} onLeave={leaveMeeting} onEnd={endMeeting} room={room} user={context.user} onVocabularyRefresh={refreshVocabulary} readOnly={meetingReadOnly} />;
 
   const shell = page === "home" || page === "record"
     ? <AppShell variant="surface" height="fill" contentPadding={0} style={{ background: page === "home" ? "var(--brand-cream)" : undefined }}>{content}</AppShell>
@@ -3303,6 +3490,6 @@ export default function App() {
   }
   if (sessionError) return <ServiceConnectionScreen error={sessionError} onRetry={loadSession} isRetrying={loading} />;
   if (context?.authenticated !== true || !context?.user) return <AuthScreen onAuthenticated={setContext} />;
-  if (!context.organization) return <OrganizationSetup context={context} onChange={setContext} />;
+  if (!context.organization) return <ServiceConnectionScreen error={new Error("계정 공간을 준비하지 못했습니다.")} onRetry={loadSession} isRetrying={loading} />;
   return <Workspace context={context} onContextChange={setContext} onLogout={logout} />;
 }
