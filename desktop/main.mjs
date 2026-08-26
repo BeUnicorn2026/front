@@ -18,7 +18,7 @@ function setMeetingMode(active) {
     const display = screen.getDisplayMatching(mainWindow.getBounds());
     const bounds = meetingWindowBounds(display.workArea);
     mainWindow.setMinimumSize(380, 640);
-    mainWindow.setMaximumSize(display.workArea.width, display.workArea.height);
+    mainWindow.setMaximumSize(homeWindowState.maxWidth, display.workArea.height);
     mainWindow.setBounds(bounds, true);
     mainWindow.setAlwaysOnTop(true, "floating");
     if (process.platform === "darwin") mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -28,7 +28,7 @@ function setMeetingMode(active) {
   mainWindow.setAlwaysOnTop(false);
   if (process.platform === "darwin") mainWindow.setVisibleOnAllWorkspaces(false);
   const display = screen.getDisplayMatching(savedHomeBounds || mainWindow.getBounds());
-  mainWindow.setMaximumSize(display.workArea.width, display.workArea.height);
+  mainWindow.setMaximumSize(homeWindowState.maxWidth, display.workArea.height);
   mainWindow.setMinimumSize(homeWindowState.minWidth, homeWindowState.minHeight);
   if (savedHomeBounds) mainWindow.setBounds(savedHomeBounds, true);
   else mainWindow.setSize(homeWindowState.width, homeWindowState.height, true);
@@ -41,6 +41,7 @@ function createMainWindow() {
     height: homeWindowState.height,
     minWidth: homeWindowState.minWidth,
     minHeight: homeWindowState.minHeight,
+    maxWidth: homeWindowState.maxWidth,
     show: false,
     webPreferences: {
       preload: join(currentDirectory, "preload.mjs"),

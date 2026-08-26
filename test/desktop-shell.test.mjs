@@ -7,7 +7,15 @@ test("meeting window becomes a right-aligned portrait surface", () => {
   const bounds = meetingWindowBounds({ x: 0, y: 0, width: 1440, height: 900 });
   assert.deepEqual(bounds, { x: 976, y: 24, width: 440, height: 820 });
   assert.ok(bounds.height > bounds.width);
-  assert.ok(homeWindowState.width > homeWindowState.height);
+  assert.deepEqual(homeWindowState, {
+    width: 440,
+    height: 820,
+    minWidth: 380,
+    minHeight: 640,
+    maxWidth: 520
+  });
+  assert.ok(homeWindowState.height > homeWindowState.width);
+  assert.ok(homeWindowState.maxWidth < homeWindowState.minHeight);
 });
 
 test("desktop shell keeps one window above other apps only during meetings", async () => {
@@ -19,8 +27,9 @@ test("desktop shell keeps one window above other apps only during meetings", asy
   assert.match(main, /mainWindow\.setAlwaysOnTop\(true, "floating"\)/);
   assert.match(main, /mainWindow\.setAlwaysOnTop\(false\)/);
   assert.match(main, /meetingWindowBounds\(display\.workArea\)/);
-  assert.match(main, /mainWindow\.setMaximumSize\(display\.workArea\.width, display\.workArea\.height\)/);
-  assert.doesNotMatch(main, /setMaximumSize\(520,/);
+  assert.match(main, /mainWindow\.setMaximumSize\(homeWindowState\.maxWidth, display\.workArea\.height\)/);
+  assert.match(main, /maxWidth: homeWindowState\.maxWidth/);
   assert.match(preload, /setMeetingMode\(active\)/);
   assert.match(appSource, /window\.voicePartitionDesktop\.setMeetingMode\(page === "record"\)/);
+  assert.match(appSource, /\{desktop \? \([\s\S]*data-desktop-meeting-workspace[\s\S]*\) : \([\s\S]*<LiveTranscriptFeed/);
 });
