@@ -46,6 +46,7 @@ import { workspacePageFromPath, workspacePathForPage } from "./data/navigation";
 import { microphoneLevelPresentation, speakerProbeCanBecomeSample, useRecording } from "./features/recording/useRecording";
 import { BillingPage } from "./features/billing/BillingPage";
 import { useMeetMap } from "./features/meeting/useMeetMap";
+import { segmentTranslationSequence, usePersonalizedTranscript } from "./features/meeting/usePersonalizedTranscript";
 import {
   accessCodeFromLocation,
   clearAccessCodeFromLocation,
@@ -1498,7 +1499,10 @@ function LegacyMeetingPage({ context, recording, vocabularyTerms, onVocabularyRe
   );
 }
 
-function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly = false, analyzedTerms = [], rewrites = {}, onRewriteWord, onRevertRewrite, busyTerm = "" }) {
+function LiveTranscriptFeed({
+  segments, isRecording, reducedMotion, isReadOnly = false, analyzedTerms = [], rewrites = {},
+  personalizations = {}, personalizationEnabled = false, onRewriteWord, onRevertRewrite, busyTerm = ""
+}) {
   const viewportRef = useRef(null);
   const followsLatestRef = useRef(true);
   const latestSegment = segments.at(-1);
@@ -1531,7 +1535,12 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
         header={(
           <Stack padding={4} style={{ borderBottom: "var(--border-width) solid var(--color-border)" }}>
             <Stack direction="horizontal" justify="between" align="center" gap={3}>
-              <Heading level={2}>대화 내용</Heading>
+              <Stack gap={0.5}>
+                <Heading level={2}>대화 내용</Heading>
+                <Text type="supporting" color="secondary">
+                  {personalizationEnabled ? "내 자기소개에 맞춰 실시간으로 풀어씁니다." : "말한 내용을 그대로 기록합니다."}
+                </Text>
+              </Stack>
               <Text type="supporting" color="secondary" style={{ whiteSpace: "nowrap" }}>{segments.length}개 발화</Text>
             </Stack>
           </Stack>
@@ -1539,6 +1548,10 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
       >
         {segments.length ? segments.map((segment, index) => {
           const rewrite = rewrites[index];
+          const personalization = personalizations[segmentTranslationSequence(segment, index)];
+          const personalized = personalization?.status === "ready"
+            && personalization.changed
+            && personalization.personalizedText;
           const clickableTerms = !isReadOnly && !segment.pending && onRewriteWord
             ? matchingTerms(segment.text, analyzedTerms).filter((term) => !term.isKnown)
             : [];
@@ -1551,7 +1564,26 @@ function LiveTranscriptFeed({ segments, isRecording, reducedMotion, isReadOnly =
                   {segment.pending && <StatusDot variant="accent" label="인식 중" isPulsing />}
                 </Stack>
               )}
-              description={rewrite ? (
+              description={personalized ? (
+                <Stack gap={2}>
+                  <Stack direction="horizontal" gap={1} align="center">
+                    <Token label="내 자기소개 반영" color="teal" size="sm" />
+                  </Stack>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {personalization.personalizedText}
+                  </Text>
+                  <Text as="p" type="supporting" color="secondary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    원문 · {segment.text}
+                  </Text>
+                </Stack>
+              ) : personalization?.status === "loading" ? (
+                <Stack gap={1}>
+                  <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
+                    {segment.text}
+                  </Text>
+                  <StatusDot variant="accent" label="내 자기소개에 맞게 바꾸는 중" isPulsing />
+                </Stack>
+              ) : rewrite ? (
                 <Stack gap={2}>
                   <Text as="p" type="large" color="primary" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
                     {rewrite.rewritten}
@@ -1736,6 +1768,13 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
   const meetingControlHeight = "calc(var(--spacing-10) + var(--spacing-8))";
   const participantRestHeight = "calc(var(--spacing-10) + var(--spacing-6))";
   const analyzedTerms = Array.isArray(intelligence?.terms) ? intelligence.terms : [];
+  const personalizationEnabled = recording.services.personalizedTranscript === "openai";
+  const personalizedTranscripts = usePersonalizedTranscript({
+    meetingId,
+    segments: displayedSegments,
+    introduction: user?.introduction || "",
+    enabled: personalizationEnabled
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -2050,7 +2089,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                   <LiveStructurePanel segments={displayedSegments} isRecording={!readOnly && recording.isRecording} isReadOnly={readOnly} meetMap={meetMap} liveMap={recording.liveMap} />
                 </Stack>
                 <Stack width="100%" height="100%" style={{ overflow: "hidden", borderRadius: "var(--radius-container)", background: "var(--color-background-surface)", boxShadow: "var(--shadow-low)", minWidth: 0, minHeight: 0 }}>
-                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
+                  <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} personalizations={personalizedTranscripts} personalizationEnabled={personalizationEnabled} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
                 </Stack>
               </Stack>
             ) : (
@@ -2060,7 +2099,7 @@ function MeetingPage({ recording, billing, onOpenBilling, onLeave, onEnd, room, 
                     <Text type="supporting" color="secondary">{recording.notice}</Text>
                   </Section>
                 )}
-                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
+                <LiveTranscriptFeed segments={displayedSegments} isRecording={!readOnly && recording.isRecording} reducedMotion={reducedMotion} isReadOnly={readOnly} analyzedTerms={analyzedTerms} rewrites={sentenceRewrites} personalizations={personalizedTranscripts} personalizationEnabled={personalizationEnabled} onRewriteWord={!readOnly && intelligence ? rewriteWordInSentence : undefined} onRevertRewrite={revertSentenceRewrite} busyTerm={rewriteBusyTerm} />
               </Stack>
             )}
           </LayoutContent>
