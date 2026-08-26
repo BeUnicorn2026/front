@@ -3,6 +3,17 @@ export const VOICE_ENROLLMENT_PASSAGE = "오늘 회의에서는 서로의 의견
 export const MINIMUM_ENROLLMENT_SECONDS = 10;
 export const MAXIMUM_ENROLLMENT_SECONDS = 15;
 export const DEFAULT_ENROLLMENT_SECONDS = 12;
+export const VOICE_WAVEFORM_SAMPLE_COUNT = 36;
+
+export function appendVoiceLevel(history, level, sampleCount = VOICE_WAVEFORM_SAMPLE_COUNT) {
+  const safeHistory = Array.isArray(history) ? history : [];
+  const safeCount = Math.max(1, Math.floor(Number(sampleCount) || VOICE_WAVEFORM_SAMPLE_COUNT));
+  const numericLevel = Number(level);
+  const safeLevel = Number.isFinite(numericLevel)
+    ? Math.round(Math.min(100, Math.max(0, numericLevel)))
+    : 0;
+  return [...safeHistory, safeLevel].slice(-safeCount);
+}
 
 export function normalizedEnrollmentDuration(seconds = DEFAULT_ENROLLMENT_SECONDS) {
   const numeric = Number(seconds);
