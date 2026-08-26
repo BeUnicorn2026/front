@@ -127,6 +127,18 @@ test("turns validated Go MeetMap output into the same tree renderer", () => {
   assert.equal(trees[0].links[0].relation, "답변");
 });
 
+test("keeps LiveMap evidence attached after room transcript time sorting", () => {
+  const timeSorted = [
+    { sequence: 1, speaker: "먼저", start: 3, text: "시간상 첫 발화" },
+    { sequence: 0, speaker: "나중", start: 8, text: "지연 도착 발화" }
+  ];
+  const trees = buildDialogueMapTreesFromResult({ topics: [{
+    nodes: [{ id: "delayed", segmentIndex: 0, kind: "question", summary: "지연 도착 발화" }]
+  }] }, timeSorted);
+
+  assert.match(trees[0].root.meta, /^나중/);
+});
+
 test("live action preview assigns only evidence-backed owners and due dates", () => {
   const actions = deriveActions([
     { speaker: "지수", start: 0, text: "민수님이 내일까지 결과를 확인해 주세요." },

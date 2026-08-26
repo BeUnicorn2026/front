@@ -26,6 +26,18 @@ function persistedSegmentSequence(segment) {
   return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : null;
 }
 
+function compareRoomSegmentTimeline(left, right) {
+  const leftStart = Number(left?.start);
+  const rightStart = Number(right?.start);
+  const safeLeftStart = Number.isFinite(leftStart) && leftStart >= 0 ? leftStart : Number.POSITIVE_INFINITY;
+  const safeRightStart = Number.isFinite(rightStart) && rightStart >= 0 ? rightStart : Number.POSITIVE_INFINITY;
+  if (safeLeftStart !== safeRightStart) return safeLeftStart - safeRightStart;
+  const leftSequence = persistedSegmentSequence(left);
+  const rightSequence = persistedSegmentSequence(right);
+  if (leftSequence != null && rightSequence != null) return leftSequence - rightSequence;
+  return 0;
+}
+
 export function orderPersistedRoomSegments(segments) {
   const bySequence = new Map();
   const withoutSequence = [];
@@ -37,7 +49,7 @@ export function orderPersistedRoomSegments(segments) {
   return [
     ...[...bySequence.values()].sort((left, right) => left.sequence - right.sequence),
     ...withoutSequence
-  ];
+  ].sort(compareRoomSegmentTimeline);
 }
 
 export function mergeSegments(committed, incoming) {
