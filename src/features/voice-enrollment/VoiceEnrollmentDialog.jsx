@@ -11,6 +11,64 @@ import { Text } from "@astryxdesign/core/Text";
 import { useVoiceEnrollmentCapture } from "./useVoiceEnrollmentCapture.js";
 import { VOICE_ENROLLMENT_PASSAGE } from "./voiceEnrollmentState.js";
 
+const WAVEFORM_BAR_COUNT = 36;
+
+function VoiceWaveform({ levels = [], isActive = false }) {
+  const visibleLevels = [...Array(Math.max(0, WAVEFORM_BAR_COUNT - levels.length)).fill(0), ...levels]
+    .slice(-WAVEFORM_BAR_COUNT);
+
+  return (
+    <svg
+      viewBox="0 0 360 96"
+      width="100%"
+      height="96"
+      role="img"
+      aria-label={isActive ? "실시간 마이크 음량 파형" : "녹음된 마이크 음량 파형"}
+      data-voice-waveform
+    >
+      <title>{isActive ? "실시간 마이크 음량 파형" : "녹음된 마이크 음량 파형"}</title>
+      {visibleLevels.map((level, index) => {
+        const barHeight = Math.max(6, Math.round((Math.min(100, Math.max(0, level)) / 100) * 80));
+        return (
+          <rect
+            key={`${index}-${level}`}
+            x={index * 10 + 2}
+            y={(96 - barHeight) / 2}
+            width="6"
+            height={barHeight}
+            rx="3"
+            fill={level > 0 ? "var(--color-accent)" : "var(--color-border)"}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function storageStagePresentation(phase, stage) {
+  const phaseOrder = { idle: -1, requesting: 0, recording: 0, stopping: 1, uploading: 1, success: 3, error: -1 };
+  const current = phaseOrder[phase] ?? 0;
+  if (current > stage) return { variant: "success", label: "완료" };
+  if (current === stage) return { variant: "accent", label: "진행 중" };
+  return { variant: "neutral", label: "대기" };
+}
+
+function StorageStage({ phase, stage, title, description }) {
+  const state = storageStagePresentation(phase, stage);
+  return (
+    <Stack direction="horizontal" align="start" justify="between" gap={3}>
+      <Stack gap={1}>
+        <Text type="label">{title}</Text>
+        <Text type="supporting" color="secondary">{description}</Text>
+      </Stack>
+      <Stack direction="horizontal" align="center" gap={1}>
+        <StatusDot variant={state.variant} isPulsing={state.label === "진행 중"} />
+        <Text type="supporting" color="secondary">{state.label}</Text>
+      </Stack>
+    </Stack>
+  );
+}
+
 function phasePresentation(phase, permission) {
   if (phase === "requesting") return { variant: "warning", label: "마이크 권한 확인 중" };
   if (phase === "recording") return { variant: "accent", label: "목소리 녹음 중" };
@@ -135,6 +193,43 @@ export function VoiceEnrollmentDialog({
                   </Text>
                 </Stack>
               )}
+
+              {capture.phase !== "idle" && capture.phase !== "requesting" && (
+                <Section variant="muted" padding={3}>
+                  <Stack gap={2}>
+                    <Stack direction="horizontal" align="center" justify="between" gap={2}>
+                      <Text type="label">목소리 시각화</Text>
+                      <Text type="supporting" color="secondary">입력 레벨 {capture.inputLevel}%</Text>
+                    </Stack>
+                    <VoiceWaveform levels={capture.levelHistory} isActive={capture.phase === "recording"} />
+                    <Text type="supporting" color="secondary">원본 음성 대신 최근 음량 값 36개만 화면에 표시합니다.</Text>
+                  </Stack>
+                </Section>
+              )}
+
+              <Section padding={3} data-voice-storage-flow>
+                <Stack gap={3}>
+                  <Text type="label">저장 과정</Text>
+                  <StorageStage
+                    phase={capture.phase}
+                    stage={0}
+                    title="브라우저에서 녹음"
+                    description="녹음 중 메모리에만 임시 보관하며 브라우저 저장소에는 남기지 않습니다."
+                  />
+                  <StorageStage
+                    phase={capture.phase}
+                    stage={1}
+                    title="서버에서 음질 분석"
+                    description="16 kHz 단일 채널 음성으로 변환해 길이·음량·말소리·잡음을 확인합니다."
+                  />
+                  <StorageStage
+                    phase={capture.phase}
+                    stage={2}
+                    title="내 목소리 프로필 저장"
+                    description="화자 임베딩과 제한된 참조 음성을 계정 소유 데이터로 암호화해 저장합니다."
+                  />
+                </Stack>
+              </Section>
 
               {["requesting", "stopping", "uploading"].includes(capture.phase) && (
                 <ProgressBar

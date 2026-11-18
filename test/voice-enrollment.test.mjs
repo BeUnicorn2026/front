@@ -6,6 +6,8 @@ import {
   MAXIMUM_ENROLLMENT_SECONDS,
   MINIMUM_ENROLLMENT_SECONDS,
   VOICE_ENROLLMENT_PASSAGE,
+  VOICE_WAVEFORM_SAMPLE_COUNT,
+  appendVoiceLevel,
   enrollmentCaptureErrorMessage,
   enrollmentFilename,
   enrollmentPermissionFromError,
@@ -50,6 +52,13 @@ test("keeps enrollment capture inside the server's accepted 10–15 second windo
   });
 });
 
+test("keeps only a bounded, normalized voice-level history for visualization", () => {
+  assert.equal(VOICE_WAVEFORM_SAMPLE_COUNT, 36);
+  assert.deepEqual(appendVoiceLevel([10, 20], 31.6, 3), [10, 20, 32]);
+  assert.deepEqual(appendVoiceLevel([10, 20, 30], 200, 3), [20, 30, 100]);
+  assert.deepEqual(appendVoiceLevel(null, Number.NaN, 3), [0]);
+});
+
 test("provides a fixed Korean passage and predictable recording metadata", () => {
   assert.match(VOICE_ENROLLMENT_PASSAGE, /오늘 회의에서는/);
   assert.ok(VOICE_ENROLLMENT_PASSAGE.length > 50);
@@ -74,6 +83,7 @@ test("capture hook stays isolated from transcription and meeting creation", asyn
   assert.match(source, /microphoneConstraints\(selectedAudioInputId\)/);
   assert.match(source, /ensureAudioContextRunning\(context\)/);
   assert.match(source, /pcmInputLevel\(data\)/);
+  assert.match(source, /levelHistory: appendVoiceLevel\(current\.levelHistory, inputLevel\)/);
   assert.match(source, /new MediaRecorder/);
   assert.match(source, /onEnroll\?\.\(file/);
   assert.match(source, /elapsed >= duration\) stop\(\{ upload: true \}\)/);
@@ -85,7 +95,7 @@ test("capture hook stays isolated from transcription and meeting creation", asyn
   assert.doesNotMatch(source, /Deepgram|WebSocket|\/api\/meetings|postJson|apiRequest/);
 });
 
-test("meeting entry uses access invites without requiring canonical voice", async () => {
+test("home integrates self voice enrollment while preserving access invites", async () => {
   const [apiSource, appSource] = await Promise.all([
     readFile(apiUrl, "utf8"),
     readFile(appUrl, "utf8")
@@ -96,7 +106,9 @@ test("meeting entry uses access invites without requiring canonical voice", asyn
   assert.match(apiSource, /postJson\("\/api\/rooms\/join", \{ accessCode: normalized \}\)/);
   assert.match(apiSource, /URLSearchParams\(location\.search\)\.get\("access"\)/);
   assert.doesNotMatch(apiSource, /Deepgram|\/api\/speakers|form\.append\("voice"/);
-  assert.doesNotMatch(appSource, /<VoiceEnrollmentDialog/);
+  assert.match(appSource, /<VoiceEnrollmentDialog/);
+  assert.match(appSource, /await enrollVoice\(file\)/);
+  assert.match(appSource, /await recording\.reload\(\)/);
   assert.doesNotMatch(appSource, /requireVoiceEnrollment|VOICE_ENROLLMENT_REQUIRED_MESSAGE/);
   assert.match(appSource, /joinRoomByAccessCode\(accessCode\)/);
   assert.match(appSource, /clearAccessCodeFromLocation\(\)/);
@@ -112,6 +124,10 @@ test("dialog is integration-ready and uses Astryx primitives without raw layout 
   assert.match(source, /<Selector/);
   assert.match(source, /<ProgressBar/);
   assert.match(source, /<StatusDot/);
+  assert.match(source, /data-voice-waveform/);
+  assert.match(source, /data-voice-storage-flow/);
+  assert.match(source, /원본 음성 대신 최근 음량 값 36개/);
+  assert.match(source, /화자 임베딩과 제한된 참조 음성/);
   assert.doesNotMatch(source, /<(?:div|span)(?:\s|>)/);
   assert.doesNotMatch(source, /className=|tailwind|#[0-9A-Fa-f]{3,8}/);
 });

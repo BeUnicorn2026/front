@@ -4,6 +4,7 @@ import {
   isEditableTarget,
   normalizeRoomCode,
   printableRoomCharacter,
+  roomEntryAction,
   roomCodeKeyAction,
   updateRoomCode
 } from "../src/features/meeting/roomInput.js";
@@ -14,12 +15,17 @@ test("normalizes NFKC room input to four uppercase ASCII alphanumerics", () => {
   assert.equal(normalizeRoomCode(null), "");
 });
 
-test("handles Backspace and Enter without submitting repeats or IME input", () => {
+test("accepts only ROOM creation or a four-digit join on Enter", () => {
   assert.deepEqual(roomCodeKeyAction("AB12", { key: "Backspace" }), {
     code: "AB1", handled: true, submit: false
   });
-  assert.equal(roomCodeKeyAction("AB12", { key: "Enter", repeat: false }).submit, true);
-  assert.equal(roomCodeKeyAction("AB12", { key: "Enter", repeat: true }).submit, false);
+  assert.deepEqual(roomEntryAction("ROOM"), { type: "create", code: "ROOM" });
+  assert.deepEqual(roomEntryAction("1234"), { type: "join", code: "1234" });
+  assert.equal(roomEntryAction("AB12").type, "invalid");
+  assert.equal(roomCodeKeyAction("ROOM", { key: "Enter", repeat: false }).submit, true);
+  assert.equal(roomCodeKeyAction("1234", { key: "Enter", repeat: false }).submit, true);
+  assert.equal(roomCodeKeyAction("AB12", { key: "Enter", repeat: false }).submit, false);
+  assert.equal(roomCodeKeyAction("ROOM", { key: "Enter", repeat: true }).submit, false);
   assert.deepEqual(roomCodeKeyAction("AB12", { key: "Enter", isComposing: true }), {
     code: "AB12", handled: false, submit: false
   });

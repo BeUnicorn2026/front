@@ -5,8 +5,17 @@ import {
   liveRecordingStatusAfterEvent, liveSocketCanAcceptAudio, liveSocketCloseCodes, maximumBufferedAudioBytes,
   correctSpeakerCluster, correctTranscriptSegment, createMeetingSaveQueue, mergeSegments,
   meetingsAfterRemoval, microphoneConstraints, microphoneLevelPresentation, orderPersistedRoomSegments, pcmInputLevel, recordingCompletionStatus, recordingStartErrorMessage,
-  persistMeetingCorrection, roomMeetingHydration, roomSocketClosure, servicesAfterLiveEvent, speakerProbeCanBecomeSample, watchAudioContext
+  persistMeetingCorrection, roomMeetingHydration, roomSocketClosure, servicesAfterLiveEvent, setMediaStreamMuted, speakerProbeCanBecomeSample, watchAudioContext
 } from "../src/features/recording/useRecording.js";
+
+test("mutes and restores only microphone audio tracks", () => {
+  const tracks = [{ enabled: true }, { enabled: true }];
+  const stream = { getAudioTracks: () => tracks };
+  assert.equal(setMediaStreamMuted(stream, true), 2);
+  assert.deepEqual(tracks.map(({ enabled }) => enabled), [false, false]);
+  assert.equal(setMediaStreamMuted(stream, false), 2);
+  assert.deepEqual(tracks.map(({ enabled }) => enabled), [true, true]);
+});
 
 test("combines STT confidence independently from speaker similarity", () => {
   const result = mergeSegments(
@@ -17,23 +26,23 @@ test("combines STT confidence independently from speaker similarity", () => {
   assert.ok(result[0].transcriptConfidence > 0.73 && result[0].transcriptConfidence < 0.74);
 });
 
-test("sequence-bearing room segments dedupe and order without time-merging across reconnects", () => {
+test("sequence-bearing room segments dedupe and order by meeting time across delayed arrivals", () => {
   const persisted = [
-    { id: "old", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "이전 연결" }
+    { id: "late", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 8, end: 9, text: "늦게 도착" }
   ];
   const nextSession = [
-    { id: "new", sequence: 1, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "새 연결" },
-    { id: "duplicate", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 0, end: 1, text: "중복" }
+    { id: "early", sequence: 1, speaker: "민수", sourceSpeaker: "0", start: 3, end: 4, text: "먼저 발화" },
+    { id: "duplicate", sequence: 0, speaker: "민수", sourceSpeaker: "0", start: 8, end: 9, text: "중복" }
   ];
 
   const result = mergeSegments(persisted, nextSession);
-  assert.deepEqual(result.map(({ sequence }) => sequence), [0, 1]);
-  assert.deepEqual(result.map(({ text }) => text), ["이전 연결", "새 연결"]);
-  assert.equal(result[0].text.includes("새 연결"), false);
+  assert.deepEqual(result.map(({ sequence }) => sequence), [1, 0]);
+  assert.deepEqual(result.map(({ text }) => text), ["먼저 발화", "늦게 도착"]);
+  assert.equal(result[1].text.includes("먼저 발화"), false);
 
   const hydrated = orderPersistedRoomSegments([nextSession[0], persisted[0], nextSession[1]]);
-  assert.deepEqual(hydrated.map(({ sequence }) => sequence), [0, 1]);
-  assert.deepEqual(hydrated.map(({ text }) => text), ["이전 연결", "새 연결"]);
+  assert.deepEqual(hydrated.map(({ sequence }) => sequence), [1, 0]);
+  assert.deepEqual(hydrated.map(({ text }) => text), ["먼저 발화", "늦게 도착"]);
 });
 
 test("corrects transcript text and preserves it across final transcription", () => {
@@ -132,11 +141,13 @@ test("tracks speaker model preparation and readiness from live events", () => {
 
   const ready = servicesAfterLiveEvent(loading, { type: "ready", mode: "speaker" });
   assert.equal(ready.speakerModelState, "ready");
+  assert.equal(servicesAfterLiveEvent(loading, { type: "ready", mode: "self" }).speakerModelState, "ready");
   assert.strictEqual(servicesAfterLiveEvent(ready, { type: "transcript" }), ready);
 });
 
 test("turns provider voice activity into clear live recording states", () => {
   assert.equal(liveRecordingStatusAfterEvent({ type: "ready", mode: "speaker" }), "녹음 중 · 화자 식별 연결됨");
+  assert.equal(liveRecordingStatusAfterEvent({ type: "ready", mode: "self" }), "녹음 중 · 내 목소리만 기록 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "speaker"), "말하는 중 · 화자와 문장 분석 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "speech_started" }, "stt"), "말하는 중 · 실시간 문장 분석 중");
   assert.equal(liveRecordingStatusAfterEvent({ type: "utterance_end" }), "듣는 중 · 다음 발화 대기");

@@ -1,8 +1,9 @@
 export const homeWindowState = Object.freeze({
-  width: 1080,
-  height: 760,
-  minWidth: 820,
-  minHeight: 620
+  width: 440,
+  height: 820,
+  minWidth: 380,
+  minHeight: 640,
+  maxWidth: 520
 });
 
 export function meetingWindowBounds(workArea) {

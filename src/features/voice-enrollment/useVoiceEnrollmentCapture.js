@@ -6,6 +6,7 @@ import {
 } from "../recording/useRecording.js";
 import {
   DEFAULT_ENROLLMENT_SECONDS,
+  appendVoiceLevel,
   enrollmentCaptureErrorMessage,
   enrollmentFilename,
   enrollmentPermissionFromError,
@@ -19,6 +20,7 @@ const initialState = Object.freeze({
   permission: "prompt",
   elapsed: 0,
   inputLevel: 0,
+  levelHistory: [],
   error: ""
 });
 
@@ -139,7 +141,12 @@ export function useVoiceEnrollmentCapture({
       const measured = pcmInputLevel(data);
       smoothedLevel = smoothedLevel * 0.7 + measured * 0.3;
       if (mountedRef.current) {
-        setCapture((current) => ({ ...current, inputLevel: Math.round(smoothedLevel) }));
+        const inputLevel = Math.round(smoothedLevel);
+        setCapture((current) => ({
+          ...current,
+          inputLevel,
+          levelHistory: appendVoiceLevel(current.levelHistory, inputLevel)
+        }));
       }
     };
     source.connect(processor).connect(muted).connect(context.destination);

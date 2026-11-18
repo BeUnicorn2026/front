@@ -370,11 +370,15 @@ export function buildDialogueMapTrees(segments, { maximumNodes = 7 } = {}) {
 
 export function buildDialogueMapTreesFromResult(result, segments) {
   const sourceSegments = Array.isArray(segments) ? segments : [];
+  const segmentsBySequence = new Map(sourceSegments.flatMap((segment) => {
+    const sequence = Number(segment?.sequence);
+    return Number.isSafeInteger(sequence) && sequence >= 0 ? [[sequence, segment]] : [];
+  }));
   return (Array.isArray(result?.topics) ? result.topics : []).map((topic, topicIndex) => {
     const used = new Set();
     const nodes = (Array.isArray(topic?.nodes) ? topic.nodes : []).map((node, nodeIndex) => {
       const segmentIndex = Number(node?.segmentIndex);
-      const segment = sourceSegments[segmentIndex];
+      const segment = segmentsBySequence.get(segmentIndex) || sourceSegments[segmentIndex];
       const id = String(node?.id || `ai-topic-${topicIndex}-node-${nodeIndex}`);
       if (!segment || used.has(segmentIndex) || !["question", "position", "pro", "con"].includes(node?.kind)) return null;
       used.add(segmentIndex);

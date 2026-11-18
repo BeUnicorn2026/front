@@ -15,9 +15,27 @@ export function liveSocketCanAcceptAudio(socket, maximumBytes = maximumBufferedA
     && Number(socket.bufferedAmount || 0) <= maximumBytes;
 }
 
+export function setMediaStreamMuted(stream, muted) {
+  const tracks = stream?.getAudioTracks?.() || [];
+  for (const track of tracks) track.enabled = !muted;
+  return tracks.length;
+}
+
 function persistedSegmentSequence(segment) {
   const sequence = Number(segment?.sequence);
   return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : null;
+}
+
+function compareRoomSegmentTimeline(left, right) {
+  const leftStart = Number(left?.start);
+  const rightStart = Number(right?.start);
+  const safeLeftStart = Number.isFinite(leftStart) && leftStart >= 0 ? leftStart : Number.POSITIVE_INFINITY;
+  const safeRightStart = Number.isFinite(rightStart) && rightStart >= 0 ? rightStart : Number.POSITIVE_INFINITY;
+  if (safeLeftStart !== safeRightStart) return safeLeftStart - safeRightStart;
+  const leftSequence = persistedSegmentSequence(left);
+  const rightSequence = persistedSegmentSequence(right);
+  if (leftSequence != null && rightSequence != null) return leftSequence - rightSequence;
+  return 0;
 }
 
 export function orderPersistedRoomSegments(segments) {
@@ -31,7 +49,7 @@ export function orderPersistedRoomSegments(segments) {
   return [
     ...[...bySequence.values()].sort((left, right) => left.sequence - right.sequence),
     ...withoutSequence
-  ];
+  ].sort(compareRoomSegmentTimeline);
 }
 
 export function mergeSegments(committed, incoming) {
@@ -174,12 +192,13 @@ export function applyManualSpeakerCorrections(finalSegments, liveSegments, corre
 
 export function servicesAfterLiveEvent(services, event) {
   if (event.type === "preparing") return { ...services, speakerModelState: "loading" };
-  if (event.type === "ready" && event.mode === "speaker") return { ...services, speakerModelState: "ready" };
+  if (event.type === "ready" && ["speaker", "self"].includes(event.mode)) return { ...services, speakerModelState: "ready" };
   return services;
 }
 
 export function liveRecordingStatusAfterEvent(event, mode = "stt") {
   if (event?.type === "ready") {
+    if (event.mode === "self") return "녹음 중 · 내 목소리만 기록 중";
     return event.mode === "speaker" ? "녹음 중 · 화자 식별 연결됨" : "녹음 중 · 실시간 STT 연결됨";
   }
   if (event?.type === "preparing") return event.message || "화자 인식 모델 준비 중";
@@ -348,6 +367,7 @@ export function useRecording() {
   const chunksRef = useRef([]);
   const committedRef = useRef([]);
   const recordingRef = useRef(false);
+  const microphonePausedRef = useRef(false);
   const languageRef = useRef(language);
   const modeRef = useRef(mode);
   const noticeModeRef = useRef(mode);
@@ -499,6 +519,10 @@ export function useRecording() {
 
   const handleSocketEvent = useCallback((event) => {
     setServices((current) => servicesAfterLiveEvent(current, event));
+    if (event.type === "ready" && event.mode === "self") {
+      modeRef.current = "self";
+      setMode("self");
+    }
     if (event.type === "room-closed" || event.code === "ROOM_CLOSED") {
       setRoomClosed(true);
       setNotice(event.message || "회의가 종료되었습니다. 현재까지의 기록은 보존됩니다.");
@@ -562,11 +586,11 @@ export function useRecording() {
     socketDisconnectedRef.current = false;
     let ready = false;
     let terminalMessage = "";
-    const maximumWait = modeRef.current === "speaker" ? 120_000 : 15_000;
+    const maximumWait = ["speaker", "self"].includes(modeRef.current) ? 120_000 : 15_000;
     const timeout = window.setTimeout(() => {
       if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close(1000, "connection timeout");
       if (socketRef.current === socket) socketRef.current = null;
-      reject(new Error(modeRef.current === "speaker" ? "화자 인식 모델 준비 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." : "실시간 STT 연결 시간이 초과되었습니다."));
+      reject(new Error(["speaker", "self"].includes(modeRef.current) ? "화자 인식 모델 준비 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요." : "실시간 STT 연결 시간이 초과되었습니다."));
     }, maximumWait);
     socket.addEventListener("message", ({ data }) => {
       let event;
@@ -613,13 +637,14 @@ export function useRecording() {
         reject(roomClosure || new Error("실시간 연결이 준비되기 전에 종료되었습니다. 잠시 후 다시 시도해 주세요."));
         return;
       }
-      if (recordingRef.current) {
+      if (recordingRef.current || microphonePausedRef.current) {
         const wasRoomClosed = Boolean(roomClosure);
         interruptedRef.current = !wasRoomClosed;
         if (wasRoomClosed) {
           setRoomClosed(true);
         }
         recordingRef.current = false;
+        microphonePausedRef.current = false;
         setIsRecording(false);
         setIsBusy(true);
         setStatus(wasRoomClosed ? "회의 종료 · 기록 보존" : "연결 종료 · 기록 보존 중");
@@ -645,6 +670,7 @@ export function useRecording() {
     muted.gain.value = 0;
     let smoothedLevel = 0;
     processor.port.onmessage = ({ data }) => {
+      if (microphonePausedRef.current) return;
       const measuredLevel = pcmInputLevel(data);
       smoothedLevel = smoothedLevel * 0.7 + measuredLevel * 0.3;
       setAudioLevel(Math.round(smoothedLevel));
@@ -686,6 +712,7 @@ export function useRecording() {
 
   const finishRecording = useCallback(() => {
     recordingRef.current = false;
+    microphonePausedRef.current = false;
     setIsRecording(false);
     setIsBusy(false);
     setStatus(interruptedRef.current ? "연결 종료 · 기록 보존" : "기록 완료");
@@ -753,6 +780,25 @@ export function useRecording() {
       setNotice("서버에 Deepgram API 키가 설정되어 있지 않습니다.");
       return;
     }
+    if (roomId && roomIdRef.current === roomId && microphonePausedRef.current
+      && socketRef.current?.readyState === WebSocket.OPEN && mediaStreamRef.current) {
+      setIsBusy(true);
+      try {
+        await ensureAudioContextRunning(pcmContextRef.current);
+        setMediaStreamMuted(mediaStreamRef.current, false);
+        microphonePausedRef.current = false;
+        recordingRef.current = true;
+        setIsRecording(true);
+        setAudioLevel(0);
+        setStatus("마이크 켜짐 · 회의 수신 중");
+        setNotice("");
+      } catch (error) {
+        setNotice(error.message);
+      } finally {
+        setIsBusy(false);
+      }
+      return;
+    }
     const startAttempt = { cancelled: false, settled: null, resolve: null };
     startAttempt.settled = new Promise((resolve) => { startAttempt.resolve = resolve; });
     startAttemptRef.current = startAttempt;
@@ -764,8 +810,8 @@ export function useRecording() {
     };
     setNotice("");
     setIsBusy(true);
-    modeRef.current = "stt";
-    setMode("stt");
+    modeRef.current = roomId ? "self" : "stt";
+    setMode(modeRef.current);
     setStatus("마이크와 받아쓰기 연결 중");
     setSegments([]);
     setLiveMap(createLiveMapState());
@@ -784,6 +830,7 @@ export function useRecording() {
     setRoomClosed(false);
     socketDisconnectedRef.current = false;
     finalizationStartedRef.current = false;
+    microphonePausedRef.current = false;
     chunksRef.current = [];
     elapsedRef.current = 0;
     let createdMeeting = null;
@@ -894,7 +941,18 @@ export function useRecording() {
     }
   }, [cleanupCapture, finalizeRecording, openLiveSocket, refreshAudioInputs, saveActiveMeeting, selectedAudioInputId, services.deepgram, speakers.length, startPcmStream, upsertMeeting]);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async (options = {}) => {
+    const disconnect = options?.disconnect === true;
+    if (!disconnect && roomIdRef.current && socketRef.current?.readyState === WebSocket.OPEN
+      && mediaStreamRef.current && recordingRef.current) {
+      setMediaStreamMuted(mediaStreamRef.current, true);
+      microphonePausedRef.current = true;
+      recordingRef.current = false;
+      setIsRecording(false);
+      setAudioLevel(0);
+      setStatus("마이크 꺼짐 · 회의 수신 중");
+      return undefined;
+    }
     const starting = startAttemptRef.current;
     if (starting) {
       starting.cancelled = true;
@@ -913,6 +971,8 @@ export function useRecording() {
     else void finalizeRecording();
     return stopPromiseRef.current;
   }, [cleanupCapture, finalizeRecording]);
+
+  const finish = useCallback(() => stop({ disconnect: true }), [stop]);
 
   const transcribeFile = useCallback(async (file) => {
     if (!file) return;
@@ -1070,6 +1130,7 @@ export function useRecording() {
     setRoomClosed(false);
     socketDisconnectedRef.current = false;
     finalizationStartedRef.current = false;
+    microphonePausedRef.current = false;
     setSegments([]);
     setLiveMap(createLiveMapState());
     setHasResult(false);
@@ -1122,7 +1183,7 @@ export function useRecording() {
     notice: noticeModeRef.current === mode && !(mode === "stt" && notice === "설정에서 목소리를 한 명 이상 등록해 주세요.") ? notice : "", setNotice,
     elapsed, audioLevel, segments, hasResult, liveMap, speakers, services, meetings, activeMeeting, roomClosed,
     audioInputs, selectedAudioInputId, setSelectedAudioInputId,
-    start, stop, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, bindRoomMeeting, refreshActiveMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
+    start, stop, finish, transcribeFile, enrollSpeaker, addSpeakerSample, removeSpeaker, updateSpeaker, updateMeeting: upsertMeeting, openMeeting, bindRoomMeeting, refreshActiveMeeting, resetMeeting, removeMeeting, correctSpeaker, correctTranscript,
     reload: loadConfiguration
   };
 }

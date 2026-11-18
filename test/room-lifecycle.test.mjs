@@ -29,12 +29,12 @@ test("leaving awaits stream shutdown without closing the room, while creator end
   const leave = sourceBetween(appSource, "const leaveMeeting", "const endMeeting");
   const end = sourceBetween(appSource, "const endMeeting", "const openMeeting");
 
-  assert.match(leave, /await recording\.stop\(\)/);
+  assert.match(leave, /await recording\.finish\(\)/);
   assert.match(leave, /navigateTo\("home"\)/);
   assert.doesNotMatch(leave, /\/close/);
 
   assert.match(end, /room\.createdBy !== context\.user\.id/);
-  assert.match(end, /await recording\.stop\(\)/);
+  assert.match(end, /await recording\.finish\(\)/);
   assert.match(end, /postJson\(`\/api\/rooms\/\$\{encodeURIComponent\(room\.id\)\}\/close`, \{\}\)/);
   assert.match(end, /if \(result\?\.meeting\) recording\.updateMeeting\(result\.meeting\)/);
   assert.match(end, /else await recording\.reload\(\)/);
@@ -52,7 +52,19 @@ test("startup cancellation and browser history both await local shutdown", () =>
   assert.match(stop, /cleanupCapture\(\)/);
   assert.match(stop, /await starting\.settled/);
   assert.match(popstate, /if \(pageRef\.current === "record"\)/);
-  assert.match(popstate, /await recordingStopRef\.current\(\)/);
+  assert.match(popstate, /await recordingFinishRef\.current\(\)/);
+});
+
+test("room microphone toggle keeps the live socket while explicit finish disconnects", () => {
+  const stop = sourceBetween(recordingSource, "const stop =", "const transcribeFile");
+  const meetingPage = sourceBetween(appSource, "function MeetingPage", "function meetingDate");
+
+  assert.match(stop, /roomIdRef\.current && socketRef\.current\?\.readyState === WebSocket\.OPEN/);
+  assert.match(stop, /setMediaStreamMuted\(mediaStreamRef\.current, true\)/);
+  assert.match(stop, /setStatus\("마이크 꺼짐 · 회의 수신 중"\)/);
+  assert.match(stop, /const finish = useCallback\(\(\) => stop\(\{ disconnect: true \}\)/);
+  assert.match(meetingPage, /"마이크 끄기"/);
+  assert.match(meetingPage, /"마이크 켜기"/);
 });
 
 test("only the room creator sees explicit end controls", () => {
